@@ -1,0 +1,119 @@
+---
+title: "Multidimensional Scaling"
+author: "Edie Espejo"
+date: "Pi Day 2018"
+fig_width: 6 
+fig_height: 6
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE)
+knitr::opts_knit$set(root.dir="/Users/treehouse3/Dropbox/Effect_of_partitioning/step_2_shakedown_runs/output/RevBayes/Bloom_2013_fishes")
+```
+
+<b>Vector Spaces</b> Whether or not you know how to define "vector space", you have seen plenty of vector spaces in math so far. For example, your normal x-y plot is located in a vector space called $R^2$. This vector space is the unbounded plane of all real numbers, and we can visualize this space as in 2-D. We also take $R^1$, the classic number line, and $R^3$, 3-D space, as vector spaces. We can easily visualize data on these three named vector spaces.
+
+But can you imagine what $R^4$ looks like? I sure can't!
+
+<b>Classical Multidimensional Scaling / Principal Coordinates Analysis</b> In phylogenetics, we are often working with data that is in a vector space we can't visualize. Principal Coordinates Analysis (PCoA) is a multidimensional scaling algorithm that uses the eigenvectors and eigenvalues of a strain matrix compiled from pairwise disimilarity scores to rank and procure the "important" information out of a multidimensional dataset. PCoA can reduce the dimensions of a dataset to a specified amount, but we use it to scale data to a dimension which we can see, i.e. $R^2$ or $R^3$.
+
+Let's do this in R. Start by installing then loading in the libraries ```ape```, ```phangorn``` and ```smacof```.
+
+```{r, warning=FALSE, message=FALSE}
+# LIBRARIES
+library(ape)
+library(phangorn)
+library(smacof)
+
+# OPTIONAL FOR YOU, BUT NOT FOR THIS TUTORIAL
+library(RColorBrewer)
+```
+
+The RevBayes output files you need are the ```.trees``` files which contain the phylogenetic trees generated during your MCMC. In this tutorial, we'll be reading in a dataset's output from my partitioning project.
+
+```{r}
+# LIST FILES
+sample_rb_output = list.files()
+print(sample_rb_output)
+```
+
+Now, I'm going to ask for just the ```.trees``` files.
+
+```{r}
+# CHOOSE FILES
+trees_files = sample_rb_output[grepl("\\.trees", sample_rb_output)]
+trees_files
+```
+
+Let's read some of the files into R using ```read.tree()``` from ```ape```.
+
+```{r}
+# READING IN PHYLOGENETIC TREES
+trees_1 = read.tree(trees_files[1])
+trees_2 = read.tree(trees_files[2])
+```
+
+The ```trees_1``` object and ```trees_2``` object are of both 501 phylogenetic trees. We are going to use several functions to uncover some simplified plottable data in these large phylogenetic trees. When we combine the two, we get an object that is of 1002 phylogenetic trees.
+
+```{r}
+# COMBINE INTO A VECTOR OF TREES
+combined_trees = c(trees_1, trees_2)
+combined_trees
+```
+
+We will compute the Robinson-Foulds distance between the trees as a measure of "difference". We can alternatively use the Kuhner-Felsenstein distance by using ```KF.dist()``` instead.
+
+```{r, message=FALSE, warning=FALSE}
+# COMPUTE THE RF DISTANCES
+rf_matrix = RF.dist(combined_trees)
+```
+
+We will use the ```cmdscale()``` function to reduce our data's dimensions, grabbing the most "important" features of the data. We will be projecting our high dimensional dataset onto a 2-D plane for visualization purposes. Therefore, we will have two columns of data to plot.
+
+```{r}
+# * COMPUTE PRINCIPAL COMPONENTS ANALYSIS (MDS)
+init_matrix = cmdscale(rf_matrix)
+init_matrix[1:10,]
+```
+
+Technically, we can plot these values above. However, we will plot a standardized version of these data to ensure that we can see our results more clearly.
+
+```{r}
+# * STANDARDIZING
+pcao = smacofSym(rf_matrix, init=init_matrix)$conf
+
+# * PLOTTING
+colors = rep(brewer.pal(n=3, name = "Dark2")[2:3], each=501)
+symbols = rep(c(18,20), each=501)
+plot(c(-1,1), c(-1,1), type="n", xlab="", ylab="")
+these_points = c(-1, -0.5, 0, 0.5, 1)
+abline(v=these_points, col="gray14", lwd=500)
+abline(v=these_points, col="darkgrey", lwd=0.5)
+abline(h=these_points, col="lightgrey", lwd=1, lty=3)
+points(pcao, col=colors, pch=symbols)
+title(main="PCoA for Two Schemes", sub="Bloom_2013_fishes")
+```
+
+We can do an analogous procedure for more than 2 datasets.
+
+```{r, message=FALSE, warning=FALSE}
+all_trees = lapply(trees_files, read.tree)
+sample_size = 50
+number_sample = round(runif(100, 1, 501))
+combined_trees = c(all_trees[[1]][number_sample], all_trees[[2]][number_sample], all_trees[[3]][number_sample], all_trees[[4]][number_sample], all_trees[[5]][number_sample])
+
+rf_matrix = RF.dist(combined_trees)
+init_matrix = cmdscale(rf_matrix)
+pcao = smacofSym(rf_matrix, init=init_matrix)$conf
+
+colors = rep(brewer.pal(n=5, name = "Dark2"), each=sample_size)
+symbols = rep(15:19, each=sample_size)
+plot(c(-1,1.2), c(-1,1.2), type="n", xlab="", ylab="")
+these_points = c(-1, -0.5, 0, 0.5, 1)
+abline(v=these_points, col="gray14", lwd=500)
+abline(v=these_points, col="darkgrey", lwd=0.5)
+abline(h=these_points, col="snow2", lwd=1, lty=3)
+points(pcao, col=colors, pch=symbols)
+title(main="PCoA for Five Schemes", sub="Bloom_2013_fishes")
+```

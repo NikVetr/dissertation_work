@@ -1,0 +1,89 @@
+---
+title: "Compare Tree Plots"
+author: "Edie Espejo"
+date: "Pi Day 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE)
+knitr::opts_knit$set(root.dir="/Users/treehouse3/Dropbox/Effect_of_partitioning/step_2_shakedown_runs/output/RevBayes/Bloom_2013_fishes")
+```
+
+Before we start implementing the code to general compare tree plots in ```R```, let's take a look at a few examples of what these plots can be used for.
+
+<b>Examples</b>
+We can use compare tree plots to visually assess the tree output inferred from different
+<br>
+1. Partitioned models (Edie) to create several 5x5 matrices
+<br>
+2. Among-site rate variation methods (Surbhi) to create several 4x4 matrices
+<br>
+3. Genes (Ziad) to create a 126x126 matrix
+
+As you can see, the comparisons you can make vary with your project, and therefore the output does too! You can always make a choice on what to compare because compare tree plots are simply a visual tool for your analyses.
+
+First, load in the ```bonsai``` package. If you have not yet installed ```bonsai```, refer to Mike's <a href="https://github.com/mikeryanmay/bonsai">GitHub documentation</a>.
+
+```{r, warning=FALSE, message=FALSE}
+# LOAD LIBRARY
+library(bonsai)
+```
+
+The RevBayes output files you need are the ```.trees``` files which contain the phylogenetic trees generated during your MCMC. In this tutorial, we'll be reading in some from my partitioning project for a single dataset.
+
+```{r}
+# LIST FILES
+sample_rb_output = list.files()
+print(sample_rb_output)
+```
+
+Now, I'm going to ask for just the ```.trees``` files.
+
+```{r}
+# CHOOSE FILES
+trees_files = sample_rb_output[grepl("\\.trees", sample_rb_output)]
+trees_files
+```
+
+We can now go ahead and make some labels for these analyses. I'm going to be using the partitioning scheme name. Do what works for your project for labels. For a more automated analyses, you may want to use some text parsing to generate your labels. In this case, I only have 5, and they're static so I'll hard code them.
+
+```{r}
+# AXES LABELS
+labels = c("aic", "saturated", "bic", "gene", "uniform")
+```
+
+The function we need is called ```treeComparison()```. We can make a simple compare tree plot by calling the function on the same vector of trees files and labels twice.
+
+```{r}
+# MAKE THE PLOT
+treeComparisons(trees_files, trees_files, labels, labels)
+```
+
+You can do many different permutations of compare tree plots! Say, I could compare just the AIC and BIC scheme models if I wanted to.
+
+```{r}
+# JUST AIC/BIC
+criteria = trees_files[c(1,3)]
+labels   = c("aic", "bic")
+treeComparisons(trees_files[c(1,3)], trees_files[c(1,3)], labels, labels)
+```
+
+<b>Notes on the Coefficient of Determination</b>
+<br>
+The coefficient of determination $R^2$ is a value representing how well the data fit on the $y=x$ identity line. The coefficient of determination can lie between $[-1,1]$ where a positive 1 implies a straight increasing line. If two schemes match perfectly, then they should lie tightly to the identity line. We see above in the AIC v. BIC plot that there is quite a bit of noise around the identity, despite having a high $R^2$ value. The coefficient of determination is printed at the top left of each rectangle.
+
+In the $5x5$ matrix, we see some of the rectangles are yellow and some are blue. The rectangles that are shaded similarly have similar $R^2$ values. That is, the posterior probabilities of their clades are in agreement. However, compare tree plots are visual diagnostic tools. Don't rely on the coeficient of determination to tell you the whole story.
+
+<b>Plots as a Visual Tool</b>
+<br>
+Let's take a closer look at the saturated partitioned model script's tree compared to the uniform partitioned model script's tree.
+
+```{r}
+# A SINGLE PLOT
+treeComparisons(trees_files[2], trees_files[5], "saturated", "uniform")
+```
+
+The $R^2$ value here is high, statistically speaking, but we see that there is quite a bit of discordance in the posterior probabilities for these models. Each axis is scaled by the posterior probability of a clade. Therefore, the more to the right a data point is, the higher posterior probability it has under the saturated model. The more to the top of the graph the data point is, the higher the probability it has under the uniform model.
+
+As we would expect for the maximally partitioned and miniminally partitioned schemes, there are distinct differences and strong deviations from the identity line. We would say that these two inferred trees disagree quite a bit.

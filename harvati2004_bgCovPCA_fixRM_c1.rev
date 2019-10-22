@@ -1,0 +1,52 @@
+#Processing Harvati's Dataset for phylogenetic inference under mvBM
+mi = 0
+
+# read in data and rate matrix
+means <- readContinuousCharacterData("data/Harvati_bgCovPCA.nex")
+rateMatrix = readMatrix("data/Harvati_bgCovPCAbgRM.tsv")
+
+# get some useful variables from the data
+numTips = means.ntaxa()
+numBranches = 2 * numTips - 3
+taxa = means.taxa()
+numNodes = numTips * 2 - 1
+ntraits <- means.nchar()
+
+#specify tree
+topology ~ dnUniformTopology(taxa)
+
+# we also move the tree topology
+moves[++mi] = mvNNI(topology, weight=30.0)
+moves[++mi] = mvSPR(topology, weight=60.0)
+
+# specify branch length priors
+TL_log ~ dnUniform(-3, 3)
+moves[++mi] = mvSlide(TL_log, delta = 0.25, tune = true, weight = 5)
+TL := 10^TL_log
+br_prior = rep(1, numBranches)
+br_len_props ~ dnDirichlet(br_prior)
+moves[++mi] = mvBetaSimplex(br_len_props,tune=true,weight=60)
+moves[++mi] = mvDirichletSimplex(br_len_props,numCats=numBranches,offset=0,tune=true,weight=200)
+br_lens := br_len_props * TL
+
+phylogeny := treeAssembly(topology, br_lens)
+
+#put it all together
+brownData ~ dnPhyloMultivariateBrownianREML(phylogeny, rep(1.0, numBranches), rateMatrix, nSites=ntraits, method = "transform")
+brownData.clamp(means)
+brownData.lnProbability()
+
+#specify monitors
+monitors[1] = mnModel(filename="output/bgCovPCA_fixRM_c1.log", printgen=500, separator = TAB)
+monitors[2] = mnFile(phylogeny, filename="output/bgCovPCA_fixRM_c1.trees", printgen=500, separator = TAB)
+monitors[3] = mnScreen(printgen=1000, TL)
+
+# We define our model.
+mymodel = model(phylogeny)
+
+# We run our MCMC
+mymcmc = mcmc(mymodel, monitors, moves, nruns = 1)
+mymcmc.burnin(generations=40000,tuningInterval=4000)
+mymcmc.operatorSummary()
+mymcmc.run(generations=200000)
+mymcmc.operatorSummary()

@@ -1,0 +1,78 @@
+#Processing Howells' Dataset for phylogenetic inference under mvBM
+mi = 0
+
+# read in data and rate matrix
+means <- readContinuousCharacterData("data/Harvati_totalCovPCA.nex")
+
+# get some useful variables from the data
+numTips = means.ntaxa()
+numBranches = 2 * numTips - 3
+taxa = means.taxa()
+numNodes = numTips * 2 - 1
+ntraits <- means.nchar()
+rateMatrixScaleCorr = readMatrix("data/Harvati_totalCovPCAbgRM_corr.tsv")
+sds = v(0.194158639855144, 0.141725990457458, 0.0489859910785749, 0.0495515428881235, 0.041215884281173, 0.035308441348609, 0.0318959370446176, 0.0276820774076965, 0.0173253571423334, 0.0197964759000855, 0.0196841406126359, 0.017932964098579, 0.0142953386765988, 0.0140375844815937, 0.0125232255144414, 0.0125081288308621, 0.0117468302730671, 0.0117396791451513, 0.0105177185767994, 0.00980769841691672, 0.00960971416433319, 0.00898705304491691, 0.00820643299841286, 0.0074539205152872, 0.00710212826487582, 0.00708804411017137, 0.00686229705395674, 0.00627275758014981, 0.00605010436443761, 0.00574449180114687, 0.00577796546184573, 0.00531112431715405, 0.00519164973189175, 0.0044864160902044, 0.00433048753513919, 0.00351202457040689, 0.00312722691901342, 0.00307398032778206, 0.0020730543894278)
+scaleMatrix = fnDecompVarCovar(sds, rateMatrixScaleCorr)
+scalePrecisionMatrix = scaleMatrix.precision()
+df = 100
+precMatrix ~ dnInvWishart(sigma = scalePrecisionMatrix, df = df)
+rateMatrix := precMatrix.precision() * (1 / df)
+
+#specify tree
+topology ~ dnUniformTopology(taxa)
+
+# we also move the tree topology
+moves[++mi] = mvNNI(topology, weight=30.0)
+moves[++mi] = mvSPR(topology, weight=60.0)
+
+# specify branch length priors
+TL_log ~ dnUniform(-3, 2)
+moves[++mi] = mvSlide(TL_log, delta = 0.25, tune = true, weight = 5)
+TL := 10^TL_log
+br_prior = rep(1, numBranches)
+br_len_props ~ dnDirichlet(br_prior)
+moves[++mi] = mvBetaSimplex(br_len_props,tune=true,weight=60)
+moves[++mi] = mvDirichletSimplex(br_len_props,numCats=numBranches,offset=0,tune=true,weight=200)
+br_lens := br_len_props * TL
+
+phylogeny := treeAssembly(topology, br_lens)
+
+# construct the rate matrix prior
+proportional_var ~ dnDirichlet(rep(1, ntraits))
+eta <- 1
+average_rate = 0.04
+relative_var := proportional_var * ntraits * average_rate
+relative_sd  := relative_var ^ 0.5
+partial_correlation_matrix ~ dnLKJPartial(eta, ntraits)
+correlation_matrix := fnPartialToCorr(partial_correlation_matrix)
+rateMatrix := fnDecompVarCovar(relative_sd, correlation_matrix)
+correlation := fnUpperTriangle(correlation_matrix)
+
+# specify moves on the rate matrix
+moves[++mi] = mvCorrelationMatrixRandomWalk(partial_correlation_matrix, sigma=0.1, weight=125.0, tune = true, tuneTarget=0.234)
+moves[++mi] = mvBetaSimplex(proportional_var, tune = true, weight=30.0)
+for(i in 1:(ntraits - 1)) {
+	for(j in (i+1):ntraits) {
+		moves[++mi] = mvCorrelationMatrixSpecificElementBeta(partial_correlation_matrix, i, j, alpha=10.0, weight=0.25, tune = true, tuneTarget=0.234)
+	}
+}
+
+#put it all together
+brownData ~ dnPhyloMultivariateBrownianREML(phylogeny, rep(1.0, numBranches), rateMatrix, nSites=ntraits, method = "transform")
+brownData.clamp(means)
+brownData.lnProbability()
+
+#specify monitors
+monitors[1] = mnModel(filename="output/totalCovPCA_uninfRM_c2.log", printgen=500, separator = TAB)
+monitors[2] = mnFile(phylogeny, filename="output/totalCovPCA_uninfRM_c2.trees", printgen=500, separator = TAB)
+monitors[3] = mnScreen(printgen=1000, TL)
+
+# We define our model.
+mymodel = model(phylogeny)
+
+# We run our MCMC
+mymcmc = mcmc(mymodel, monitors, moves, nruns = 1)
+mymcmc.burnin(generations=40000,tuningInterval=4000)
+mymcmc.operatorSummary()
+mymcmc.run(generations=200000)
+mymcmc.operatorSummary()
