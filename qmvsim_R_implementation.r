@@ -30,12 +30,12 @@ b <- c(0,0)
 qsimvnv(1000, r, a, b)
 pmvnorm(lower = a, upper = b, mean = 0, sigma = r)
 
-dim <- 11
-x <- matrix(rnorm(100), dim)
+dim <- 100
+x <- matrix(rnorm(dim^2), dim)
 r <- cov2cor(x%*%t(x))
 a <- rep(0, dim)
 b <- sample(2:10, size = dim, replace = T)
-qsimvnv(100000, r, a, b)
+qsimvnv(3E5, r, a, b)
 pmvnorm(lower = a, upper = b, mean = 0, sigma = r, algorithm = GenzBretz())
 
 
@@ -56,8 +56,6 @@ permchl <- function(corr, upper, lower){
   permCorr <- corr[dc:1, dc:1]
   return(list(t(chol(permCorr)), upper[dc:1], lower[dc:1]))
 }
-
-permchl(r,a,b)
 
 qsimvnv <- function(m, r, a, b){
   foo <- permchl(r, a, b); ch <- foo[[1]]; as <- foo[[2]]; bs <- foo[[3]]
@@ -134,173 +132,173 @@ seqcheck <- function(x){
   if(x[1]<=x[length(x)]) {return(x)} else {return(0)}
 }
 
-chlrdr <- function(r, a, b){
-  ep <- 1E-10
-  n <- dim(r)[1]
-  c = r
-  ap = a
-  bp = b
-  d = sqrt(diag(c))
-  for(i in 1:n){
-    if(d[i] > 0){
-      c[,i] <- c[,i] / d[i]
-      c[i,] <- c[i,] / d[i]
-      ap[i] = ap[i] / d[i]
-      bp[i] = bp[i] / d[i]
-    }
-  }
-  y <- rep(0, n)
-  sqtp <- sqrt(2*pi)
-  for(k in 1:n){
-    im = k
-    print(paste(k, im))
-    ckk = 0
-    dem = 1
-    s = 0
-    for(i in k:n){
-      if(c[i,i] > ep){
-        cii <- sqrt(max(c(c[i,i],0)))
-        if(i > 1){
-          s <- c[i,(1:(k-1))] %*% y[1:(k-1)] 
-        }
-        ai <- (ap[i]-s) / cii 
-        bi = (bp[i]-s) / cii
-        de = Phi(bi) - Phi(ai)
-        if(de <= dem){
-          ckk <- cii
-          dem <- de
-          am <- ai
-          bm <- bi
-          im <- i
-        }
-      }
-    }
-    print(paste(k, im))
-    if(im > k){
-      c[im,im] <- c[k,k]
-      ap[c(im,k)] <- ap[c(k,im)]
-      bp[c(im,k)] <- bp[c(k,im)]
-      c[c(im,k),1:(k-1)] <- c[c(k,im),1:(k-1)] 
-      c[((im+1):n),c(im,k)] <- c[((im+1):n),c(k,im)]
-      t <- c[(k+1):(im-1),k]
-      c[(k+1):(im-1),k] <- t(c[im, (k+1):(im-1)])
-      c[im,(k+1):(im-1)] <- t(t)
-    }
-    c[k,(k+1):n] <- 0
-    if(ckk > ep*k){
-      c[k,k] <- ckk
-      for(i in (k+1):n){
-        c[i,k] <- c[i,k] / ckk
-        c[i,(k+1):i] <- c[i,(k+1):i] - c[i,k]*t(c[(k+1):i,k])
-      }
-    if(abs(dem) > ep){
-      y[k] <- (exp(-am^2/2) - exp(-bm^2/2))/(sqtp*dem)
-      } else {
-      if(am < -10){
-        y[k] <- bm
-      } else if(bm > 10){
-        y[k] <- am
-      } else {
-        y[k] <- (am + bm) / 2
-        }
-      }
-    } else {
-      c[k:n,k] <- 0
-      y[k] <- 0
-    }
-  }
-  return(c(c, ap, bp))
-}
-
-chlrdr(r,a,b)
-
-chlrdr2 <- function(r, a, b){
-  ep <- 1E-10
-  n <- dim(r)[1]
-  c = r
-  ap = a
-  bp = b
-  d = sqrt(diag(c))
-  for(i in 1:n){
-    if(d[i] > 0){
-      c[,i] <- c[,i] / d[i]
-      c[i,] <- c[i,] / d[i]
-      ap[i] = ap[i] / d[i]
-      bp[i] = bp[i] / d[i]
-    }
-  }
-  y <- rep(0, n)
-  sqtp <- sqrt(2*pi)
-  for(k in 1:n){
-    im = k
-    print(paste(k, im))
-    ckk = 0
-    dem = 1
-    s = 0
-    for(i in k:n){
-      if(c[i,i] > ep){
-        cii <- sqrt(max(c(c[i,i],0)))
-        if(i > 1){
-          s <- c[i,(1:(k-1))] %*% y[1:(k-1)] 
-        }
-        ai <- (ap[i]-s) / cii 
-        bi = (bp[i]-s) / cii
-        de = Phi(bi) - Phi(ai)
-        if(de <= dem){
-          ckk <- cii
-          dem <- de
-          am <- ai
-          bm <- bi
-          im <- i
-        }
-      }
-    }
-    print(paste(k, im))
-    if(im > k){
-      c[im,im] <- c[k,k]
-      ap[c(im,k)] <- ap[c(k,im)]
-      bp[c(im,k)] <- bp[c(k,im)]
-      c[c(im,k),1:(k-1)] <- c[c(k,im),1:(k-1)] 
-      c[seqcheck((im+1):n),c(im,k)] <- c[seqcheck((im+1):n),c(k,im)]
-      t <- c[(k+1):(im-1),k]
-      c[seqcheck((k+1):(im-1)),k] <- t(c[im, seqcheck((k+1):(im-1))])
-      c[im,(k+1):(im-1)] <- t(t)
-    }
-    c[k,seqcheck((k+1):n)] <- 0
-    if(ckk > ep*k){
-      c[k,k] <- ckk
-      for(i in (k+1):n){
-        c[i,k] <- c[i,k] / ckk
-        c[i,(k+1):i] <- c[i,seqcheck((k+1):i)] - c[i,k]*t(c[seqcheck((k+1):i),k])
-      }
-      if(abs(dem) > ep){
-        y[k] <- (exp(-am^2/2) - exp(-bm^2/2))/(sqtp*dem)
-      } else {
-        if(am < -10){
-          y[k] <- bm
-        } else if(bm > 10){
-          y[k] <- am
-        } else {
-          y[k] <- (am + bm) / 2
-        }
-      }
-    } else {
-      c[k:n,k] <- 0
-      y[k] <- 0
-    }
-  }
-  return(list(c, ap, bp))
-}
-
-chlrdr2(r,a,b)
-
-
-
-
-# primes(n) in matlab returns a row vector of the prime numbers less than or equal to n
-# log is base e like in r
-# fix(x) returns a vector where each element is rounded towards the nearest integer in the directin of zero, e.g. (-2.1, 4.6) becomes (-2, 4) 
-# max returns a scalar in the meaningful case
-# ones() and zeros() return matrices of the supplied dimensions filled with 1s and 0s, respectively
-# rand returns runif(min = 0, max = 1)
-# find() in matlab is which() in R
+# chlrdr <- function(r, a, b){
+#   ep <- 1E-10
+#   n <- dim(r)[1]
+#   c = r
+#   ap = a
+#   bp = b
+#   d = sqrt(diag(c))
+#   for(i in 1:n){
+#     if(d[i] > 0){
+#       c[,i] <- c[,i] / d[i]
+#       c[i,] <- c[i,] / d[i]
+#       ap[i] = ap[i] / d[i]
+#       bp[i] = bp[i] / d[i]
+#     }
+#   }
+#   y <- rep(0, n)
+#   sqtp <- sqrt(2*pi)
+#   for(k in 1:n){
+#     im = k
+#     print(paste(k, im))
+#     ckk = 0
+#     dem = 1
+#     s = 0
+#     for(i in k:n){
+#       if(c[i,i] > ep){
+#         cii <- sqrt(max(c(c[i,i],0)))
+#         if(i > 1){
+#           s <- c[i,(1:(k-1))] %*% y[1:(k-1)] 
+#         }
+#         ai <- (ap[i]-s) / cii 
+#         bi = (bp[i]-s) / cii
+#         de = Phi(bi) - Phi(ai)
+#         if(de <= dem){
+#           ckk <- cii
+#           dem <- de
+#           am <- ai
+#           bm <- bi
+#           im <- i
+#         }
+#       }
+#     }
+#     print(paste(k, im))
+#     if(im > k){
+#       c[im,im] <- c[k,k]
+#       ap[c(im,k)] <- ap[c(k,im)]
+#       bp[c(im,k)] <- bp[c(k,im)]
+#       c[c(im,k),1:(k-1)] <- c[c(k,im),1:(k-1)] 
+#       c[((im+1):n),c(im,k)] <- c[((im+1):n),c(k,im)]
+#       t <- c[(k+1):(im-1),k]
+#       c[(k+1):(im-1),k] <- t(c[im, (k+1):(im-1)])
+#       c[im,(k+1):(im-1)] <- t(t)
+#     }
+#     c[k,(k+1):n] <- 0
+#     if(ckk > ep*k){
+#       c[k,k] <- ckk
+#       for(i in (k+1):n){
+#         c[i,k] <- c[i,k] / ckk
+#         c[i,(k+1):i] <- c[i,(k+1):i] - c[i,k]*t(c[(k+1):i,k])
+#       }
+#     if(abs(dem) > ep){
+#       y[k] <- (exp(-am^2/2) - exp(-bm^2/2))/(sqtp*dem)
+#       } else {
+#       if(am < -10){
+#         y[k] <- bm
+#       } else if(bm > 10){
+#         y[k] <- am
+#       } else {
+#         y[k] <- (am + bm) / 2
+#         }
+#       }
+#     } else {
+#       c[k:n,k] <- 0
+#       y[k] <- 0
+#     }
+#   }
+#   return(c(c, ap, bp))
+# }
+# 
+# chlrdr(r,a,b)
+# 
+# chlrdr2 <- function(r, a, b){
+#   ep <- 1E-10
+#   n <- dim(r)[1]
+#   c = r
+#   ap = a
+#   bp = b
+#   d = sqrt(diag(c))
+#   for(i in 1:n){
+#     if(d[i] > 0){
+#       c[,i] <- c[,i] / d[i]
+#       c[i,] <- c[i,] / d[i]
+#       ap[i] = ap[i] / d[i]
+#       bp[i] = bp[i] / d[i]
+#     }
+#   }
+#   y <- rep(0, n)
+#   sqtp <- sqrt(2*pi)
+#   for(k in 1:n){
+#     im = k
+#     print(paste(k, im))
+#     ckk = 0
+#     dem = 1
+#     s = 0
+#     for(i in k:n){
+#       if(c[i,i] > ep){
+#         cii <- sqrt(max(c(c[i,i],0)))
+#         if(i > 1){
+#           s <- c[i,(1:(k-1))] %*% y[1:(k-1)] 
+#         }
+#         ai <- (ap[i]-s) / cii 
+#         bi = (bp[i]-s) / cii
+#         de = Phi(bi) - Phi(ai)
+#         if(de <= dem){
+#           ckk <- cii
+#           dem <- de
+#           am <- ai
+#           bm <- bi
+#           im <- i
+#         }
+#       }
+#     }
+#     print(paste(k, im))
+#     if(im > k){
+#       c[im,im] <- c[k,k]
+#       ap[c(im,k)] <- ap[c(k,im)]
+#       bp[c(im,k)] <- bp[c(k,im)]
+#       c[c(im,k),1:(k-1)] <- c[c(k,im),1:(k-1)] 
+#       c[seqcheck((im+1):n),c(im,k)] <- c[seqcheck((im+1):n),c(k,im)]
+#       t <- c[(k+1):(im-1),k]
+#       c[seqcheck((k+1):(im-1)),k] <- t(c[im, seqcheck((k+1):(im-1))])
+#       c[im,(k+1):(im-1)] <- t(t)
+#     }
+#     c[k,seqcheck((k+1):n)] <- 0
+#     if(ckk > ep*k){
+#       c[k,k] <- ckk
+#       for(i in (k+1):n){
+#         c[i,k] <- c[i,k] / ckk
+#         c[i,(k+1):i] <- c[i,seqcheck((k+1):i)] - c[i,k]*t(c[seqcheck((k+1):i),k])
+#       }
+#       if(abs(dem) > ep){
+#         y[k] <- (exp(-am^2/2) - exp(-bm^2/2))/(sqtp*dem)
+#       } else {
+#         if(am < -10){
+#           y[k] <- bm
+#         } else if(bm > 10){
+#           y[k] <- am
+#         } else {
+#           y[k] <- (am + bm) / 2
+#         }
+#       }
+#     } else {
+#       c[k:n,k] <- 0
+#       y[k] <- 0
+#     }
+#   }
+#   return(list(c, ap, bp))
+# }
+# 
+# chlrdr2(r,a,b)
+# 
+# 
+# 
+# 
+# # primes(n) in matlab returns a row vector of the prime numbers less than or equal to n
+# # log is base e like in r
+# # fix(x) returns a vector where each element is rounded towards the nearest integer in the directin of zero, e.g. (-2.1, 4.6) becomes (-2, 4) 
+# # max returns a scalar in the meaningful case
+# # ones() and zeros() return matrices of the supplied dimensions filled with 1s and 0s, respectively
+# # rand returns runif(min = 0, max = 1)
+# # find() in matlab is which() in R
