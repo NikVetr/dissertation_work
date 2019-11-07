@@ -35,7 +35,7 @@ x <- matrix(rnorm(dim^2), dim)
 r <- cov2cor(x%*%t(x))
 a <- rep(0, dim)
 b <- sample(2:10, size = dim, replace = T)
-qsimvnv(3E5, r, a, b)
+qsimvnv(3E4, r, a, b)
 pmvnorm(lower = a, upper = b, mean = 0, sigma = r, algorithm = GenzBretz())
 
 

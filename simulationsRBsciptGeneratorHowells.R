@@ -357,12 +357,35 @@ meansNexus(traits, traitsPath)
 treePath <- paste0("trees/", fileName, "_tree.nex")
 write.nexus(tree, file = treePath, translate = T)
 
+metaScript <- readLines("/Volumes/1TB/500/full/mvBM_sims_PB_noiseless_500/diagTemp.R", warn = F)
+dir.create("diagnosticScripts")
+for(i in 1:length(redos[,1])){
+  tempScript <- metaScript
+  tempScript[1] <- paste0("setwd(dir = \"", getwd(), "/\") ")
+  tempScript[2] <- paste0(tempScript[2], redos[i,1])
+  tempScript[3] <- paste0(tempScript[3], redos[i,2])
+  tempScript[4] <- paste0(tempScript[4], redos[i,3])
+  writeLines(tempScript, paste0("diagnosticScripts/", i, ".R"))
+}
+
+sink(file = "diagnosticJobs.txt")
+
+for(i in 1:length(redos[,1])){
+  cat(paste0("cd ", getwd(), "; ",  "/usr/local/bin/RScript ", "diagnosticScripts/", i, ".R\n"))
+}   
+
+sink()
+
+#terminal command; can use system() but screen output is messy
+cat(paste0("cd ", getwd(), "; parallel --jobs 2 --sshloginfile /Volumes/macOS/Users/nikolai/instances_all --eta --results terminal_output_diags --files < diagnosticJobs.txt"))
+
+
 # write the master scripts
 for (l in 1:nrun) {
 scriptPath <- paste0("scripts/", fileName, "_script_run_", l, ".Rev")
-sink(scriptPath, append = F)
+sink("metascript.txt", append = F)
 
-  cat("## Analysis of Simulated Data:", ntraits, "traits,", rateMatrixSpecification, "rate matrix specification, replication number", replicateNum, "##\n\n")
+  cat("## Analysis of Simulated Data:", ntraits, "traits,", "replication number", replicateNum, "##\n\n")
   cat("replicateNum <-", replicateNum, "\n")
   cat("runNum <-", l, "\n")
   cat(paste0("rateMatrixSpecification <- \"", rateMatrixSpecification, "\"\n\n"))
