@@ -14,7 +14,7 @@ library(phytools)
 # cov <- strsplit(cov, split = "\t")
 # ntraits <- length(cov[[1]])
 # cov <- as.matrix(sapply(1:ntraits, function(x) as.numeric(cov[[(1:ntraits*2-1)[x]]])))
-load("rateMatrix")
+load("rateMatrix"); covOrig <- cov <- as.matrix(cov)
 
 origTraits <- strsplit(readLines("/Users/nikolai/data/Harvati_noPCA.nex"), split = "\t")
 origTraits <- origTraits[8:(length(origTraits)-2)]
@@ -66,29 +66,52 @@ ratesTSV <- function (rateMatrix, outputFilePath) {
   sink()
 }
 
-traitNumIter <- c(ntraits)
+blooming_onion <- function(cor = 1, hmean = 0, eta = 1, d){
+  r <- diag(rep(1,d))
+  if(!identical(cor, 1)){d_s <- dim(cor)[1]} else {d_s <- 1}
+  B <- eta + (d-2)/2
+  if(d_s == 1){
+    u <- rbeta(1, shape1 = B,shape2 = B)
+    rij <- 2*u-1
+    r[1,2] <- r[2,1] <- rij
+  } else {
+    r[1:d_s,1:d_s] <- cor
+  }
+  for(m in (d_s):(d-1)){
+    B <- B - 1/2
+    y <- rbeta(1, m/2, B)
+    u <- rnorm(m, mean = hmean, sd = 1) 
+    u <- u / sqrt(sum(u^2)) 
+    w <- sqrt(y)*u
+    q <- as.vector(t(chol(r[1:m,1:m])) %*% w)
+    r[(m+1),1:m] <- r[1:m, (m+1)] <- q
+  }
+  return(r)
+}
+
+ntraits <- dim(cov)[1]
+traitNumIter <- c(2^(0:4)*(ntraits-1)+1)
 
 ntips
 
 #remove old files if necessary
-file.remove(paste0("trees/", list.files("trees/")))
-dir.create("trees")
-file.remove(paste0("data/", list.files("data/")))
-dir.create("data")
-file.remove(paste0("rates/", list.files("rates/")))
-dir.create("rates")
-file.remove(paste0("scripts/", list.files("scripts/")))
-dir.create("scripts")
+# file.remove(paste0("trees/", list.files("trees/")))
+# dir.create("trees")
+# file.remove(paste0("data/", list.files("data/")))
+# dir.create("data")
+# file.remove(paste0("rates/", list.files("rates/")))
+# dir.create("rates")
+# file.remove(paste0("scripts/", list.files("scripts/")))
+# dir.create("scripts")
 
 nrun <- 2
-nrep <- 500
+nrep <- 100
 
 # i iterates over replicates
 for(i in 1:nrep){
   
     # j iterates over trait numbers
-    for (j in 1:length(traitNumIter)) {
-      
+    for (j in 2:length(traitNumIter)) {
       
       print(c(i, j))
       
@@ -97,9 +120,24 @@ for(i in 1:nrep){
       
       fileName <- paste0("simulations_", ntraits, "traits_", "replicate_", replicateNum)
       
+      #figure out rate matrix to use
+      if(ntraits > 46){
+        cor <- cov2cor(covOrig)
+        cor <- blooming_onion(cor = cor, hmean = 0.5, eta = 1, d = ntraits)
+        sds <- (diag(covOrig)^0.5)
+        sds <- diag(c(sds, sample(x = sds, size = ntraits - 46, replace = T)))
+        cov <- sds %*% cor %*% sds
+      } else if(ntraits == 46){
+        cov <- covOrig
+      }
+      
+      
       # write the covariance matrices
       ratesPathPhy <- paste0("rates/", fileName, "_rates.Phy")
       ratesPhy(cov, ratesPathPhy)
+      
+      ratesPathTSV <- paste0("rates/", fileName, "_rates.tsv")
+      ratesTSV(cov, ratesPathTSV)
       
       # simulate the traits and write to file
       traitsPath <- paste0("data/", fileName, "_traits.nex")
@@ -107,6 +145,7 @@ for(i in 1:nrep){
       #use Harvati trees
       tree <- trees[[sample(size = 1, x = 1:length(trees))]]
       
+ 
       traits <- mvSIM(tree = tree, nsim = 1, model = "BM1", param = list(ntraits = dim(cov)[1], sigma=cov, mu= rep(0, times = dim(cov)[1])))
       meansNexus(traits, traitsPath)
       
@@ -114,7 +153,7 @@ for(i in 1:nrep){
       write.nexus(tree, file = treePath, translate = T)
       
       if(i == 1 & j == 1){
-        file.remove("jobs.txt")
+        file.remove("jobs_extra.txt")
       }
       
       # write the master scripts
@@ -128,7 +167,7 @@ for(i in 1:nrep){
         tempScript[11] <- paste0("rate = readDistanceMatrix(\"rates/", fileName, "_rates.Phy\")")
         writeLines(tempScript, paste0("scripts/", fileName, "_script_run_", l, ".Rev"))
         
-        sink(file = "jobs.txt", append = T)
+        sink(file = "jobs_extra.txt", append = T)
         cat(paste0("cd ", getwd(), "; ",  "/Users/nikolai/repos/revbayes-development/projects/cmake/rb scripts/", fileName, "_script_run_", l, ".Rev\n"))
         sink()
       }
@@ -138,7 +177,7 @@ for(i in 1:nrep){
 }
     
 #terminal command; can use system() but screen output is messy
-cat(paste0("cd ", getwd(), "; parallel --jobs 7 --sshloginfile /Volumes/macOS/Users/nikolai/instances_all --eta --results terminal_output --files < jobs.txt"))
+cat(paste0("cd ", getwd(), "; parallel --jobs 7 --sshloginfile /Volumes/macOS/Users/nikolai/instances_all --eta --results terminal_output --files < jobs_extra.txt"))
 
 
 #MCMC diagnostics

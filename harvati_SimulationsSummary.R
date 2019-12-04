@@ -14,7 +14,7 @@ library(phytools)
 traitNumIter <- c(46)
 nreps <- 500
 
-rfDists <- matrix(0, nreps, 4); colnames(rfDists) <- c("mcc", "upgma", "nj", "pars")
+rfDists <- matrix(0, nreps, 4); colnames(rfDists) <- c("mcc", "upgma", "nj", "pars", "pars-pca")
 
 for (j in 1:length(traitNumIter)) { #iterates over trait number
   
@@ -36,7 +36,8 @@ for (j in 1:length(traitNumIter)) { #iterates over trait number
     njTree <- read.tree(file = paste0("output_distance/", fileName, "_neighborJoining.txt"))
     upgmaTree <- read.tree(file = paste0("output_distance/", fileName, "_upgma.txt"))
     parsTree <- read.tree(file = paste0("output_parsimony/", fileName, "_divergenceCodingParsimony.txt"))
-
+    parsTree_pca <- read.tree(file = paste0("output_parsimony_PCA/", fileName, "_divergenceCodingParsimony.txt"))
+    
     rfDists[i,1] <- RF.dist(trueTree, mccTree)
     rfDists[i,2] <- RF.dist(trueTree, upgmaTree)
     rfDists[i,3] <- RF.dist(trueTree, njTree)
@@ -44,21 +45,41 @@ for (j in 1:length(traitNumIter)) { #iterates over trait number
       rfDists[i,4] <- mean(sapply(1:length(parsTree), function(x) RF.dist(trueTree, parsTree[[x]])))
     } else if(class(parsTree) == "phylo"){
       rfDists[i,4] <- RF.dist(trueTree, parsTree)
+    }    
+    if(class(parsTree_pca) == "multiPhylo"){
+      rfDists[i,5] <- mean(sapply(1:length(parsTree_pca), function(x) RF.dist(trueTree, parsTree_pca[[x]])))
+    } else if(class(parsTree_pca) == "phylo"){
+      rfDists[i,5] <- RF.dist(trueTree, parsTree_pca)
     }
   }
 }
 
 save(rfDists, file =  "rfDists.txt")
 load(file =  "rfDists.txt")
-par(mfrow = c(4,1))
+par(mfrow = c(5,1))
 hist(rfDists[,1], breaks = 2*0:25, main = "bayesian mcc"); abline(v = mean(rfDists[,1]), col = 2, lwd = 2)
 hist(rfDists[,3], breaks = 2*0:25, main = "neighbor joining"); abline(v = mean(rfDists[,3]), col = 2, lwd = 2)
 hist(rfDists[,2], breaks = 2*0:25, main = "upgma"); abline(v = mean(rfDists[,2]), col = 2, lwd = 2)
 hist(rfDists[,4], breaks = 2*0:25, main = "parsimony"); abline(v = mean(rfDists[,4]), col = 2, lwd = 2)
+hist(rfDists[,5], breaks = 2*0:25, main = "parsimony-PCA"); abline(v = mean(rfDists[,5]), col = 2, lwd = 2)
+
+par(mfrow = c(1,1))
+library(RColorBrewer)
+cols <- brewer.pal(5, "Dark2")
+bw <- 1.5
+alph <- 0.25
+plot(density(rfDists[,1], bw = bw), xlim = c(0,50), ylim = c(0,0.1), col = "white", main = "rf-dists to true, data-generating tree", xlab = "Robinson-Foulds Distance")
+for(i in 1:5){
+  polygon(density(rfDists[,i], bw = bw), col = add.alpha(cols[i], alpha = alph))
+  lines(density(rfDists[,i], bw = bw), col = cols[i]) 
+}
+legend(legend = colnames(rfDists), fill = cols, x = "topright")
+
 
 par(mfrow = c(1,1))
 plot(rfDists[,3] - rfDists[,1], type = "l", ylim = c(-10, 48))
 lines(rfDists[,2] - rfDists[,1], type = "l", col = 2)
 lines(rfDists[,4] - rfDists[,1], type = "l", col = "blue")
+lines(rfDists[,5] - rfDists[,1], type = "l", col = "green")
 abline(h = 0, lty = 2)
-legend(legend = c("neighbor-joining", "upgma", "parsimony"), fill = c(1,2,"blue"), x = "topright"); title("difference in RF-dists from MCC Tree RF-dist")
+legend(legend = c("neighbor-joining", "upgma", "parsimony", "parsimony-pca"), fill = c(1,2,"blue","green"), x = "topright"); title("difference in RF-dists from MCC Tree RF-dist")

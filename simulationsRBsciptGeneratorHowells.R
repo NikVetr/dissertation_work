@@ -17,7 +17,7 @@ library(phytools)
 ###### Getting Modern Human Var-Cov Matrix ######
 #################################################
 
-d.orig <- read.csv("data/Howell.csv")
+d.orig <- read.csv("~/data/Howell.csv")
 d <- d.orig
 # str(d)
 # d[d == 0] <- NA
