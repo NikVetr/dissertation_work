@@ -72,7 +72,7 @@ tree <- tree1
 plot(tree)
 
 
-d.orig <- read.csv("C:\\Users\\Nikolai\\Documents\\data\\Howell.csv")
+d.orig <- read.csv("~/data/Howell.csv")
 d <- d.orig
 # str(d)
 # d[d == 0] <- NA
