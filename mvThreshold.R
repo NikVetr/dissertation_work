@@ -9,12 +9,11 @@ library(tictoc); library(microbenchmark)
 library(mvMORPH)
 library(TESS)
 
-tree <- tess.sim.taxa(n = 1, nTaxa = 50, lambda = 1, mu = 0, max = 1E3)[[1]]
+tree <- tess.sim.taxa(n = 1, nTaxa = 8, lambda = 1, mu = 0, max = 1E3)[[1]]
 R <- diag(c(1.5,2.3,1.7)) %*% matrix(c(1,0.5,0.6,0.5,1,0.4,0.6,0.4,1), 3, 3) %*% diag(c(1.5,2.3,1.7))
-R <- cov
+nt <- 8; R <- cov[1:nt, 1:nt]
 root_state <- rep(0, dim(R)[1])
 traits <- mvSIM(tree, model="BM1", param=list(sigma=R, theta=root_state)) 
-
 
 prunes <- prune(tree)
 prunes <- prunePCV(vcv.phylo(tree))
@@ -34,20 +33,50 @@ dim <- dim(R)[1]
 CBLs <- prunes[[2]]
 sum(sapply(1:(length(tree$tip.label)-1), function(x) sum(dnorm(x = t_traits[x,] / sqrt(CBLs[x]), mean = 0, sd = 1, log = T)) - log(detR*(CBLs[x]^dim))/2))
 
-#quick benchmarking
-microbenchmark(
-  dmvnorm(x = c(t(traits[-1,])), mean = rep(traits[1,], length(traits[-1,1])), sigma = kronecker(phylocv,R), log = T),
-  sum(sapply(1:(length(tree$tip.label)-1), function(x) dmvnorm(contrasts[x,], sigma = R*prunes[[2]][x], log = T))),
-  BMpruneLL(traits = traits, sig = R, tree = tree),
-  BMpruneLLuvtChol(rawTraits = traits, sig = R, tree = tree),
-  vcv.phylo(tree),
-  prunes <- prune(tree),
-  contrasts <- prunes[[1]] %*% traits[rownames(prunes[[3]])[1:length(tree$tip.label)],],
-  t_traits <- t(solve(t(chol(R))) %*% t(contrasts)),
-  detR <- det(R),
-  sum(sapply(1:(length(tree$tip.label)-1), function(x) sum(dnorm(x = t_traits[x,] / sqrt(CBLs[x]), mean = 0, sd = 1, log = T)) - log(detR*(CBLs[x]^dim))/2))
-)
+#quick benchmarking of pruning algorithm
+# microbenchmark(
+#   dmvnorm(x = c(t(traits[-1,])), mean = rep(traits[1,], length(traits[-1,1])), sigma = kronecker(phylocv,R), log = T),
+#   sum(sapply(1:(length(tree$tip.label)-1), function(x) dmvnorm(contrasts[x,], sigma = R*prunes[[2]][x], log = T))),
+#   BMpruneLL(traits = traits, sig = R, tree = tree),
+#   BMpruneLLuvtChol(rawTraits = traits, sig = R, tree = tree),
+#   vcv.phylo(tree),
+#   prunes <- prune(tree),
+#   contrasts <- prunes[[1]] %*% traits[rownames(prunes[[3]])[1:length(tree$tip.label)],],
+#   t_traits <- t(solve(t(chol(R))) %*% t(contrasts)),
+#   detR <- det(R),
+#   sum(sapply(1:(length(tree$tip.label)-1), function(x) sum(dnorm(x = t_traits[x,] / sqrt(CBLs[x]), mean = 0, sd = 1, log = T)) - log(detR*(CBLs[x]^dim))/2))
+# )
 
+#simulate thresholded traits at the population level
+n_indiv <- 20
+threshold <- rep(0, dim(traits)[2])
+traits_indiv <- lapply(1:dim(traits)[1], function(tip) rmvnorm(n = n_indiv, mean = traits[tip,], sigma = R)); names(traits_indiv) <- rownames(traits)
+traits_indiv_discr <- lapply(1:dim(traits)[1], function(tip) t(sapply(1:n_indiv, function(indiv) as.numeric(traits_indiv[[tip]][indiv,] > threshold)))); names(traits_indiv_discr) <- names(traits_indiv) 
+
+#identify unique site patterns
+traits_indiv_discr_unique <- lapply(1:dim(traits)[1], function(tip) uniqueSP(traits_indiv_discr[[tip]]))
+
+#find probs of these site patterns and multiply by freq
+logLLs <- sapply(1:length(traits_indiv_discr_unique), function(tip) sum(log(multi_pmvnorm(mean = traits[tip,], sigma = R, binaries = traits_indiv_discr_unique[[tip]]$SPs)) * traits_indiv_discr_unique[[tip]]$counts))
+microbenchmark(sapply(1:length(traits_indiv_discr_unique), 
+                      function(tip) sum(log(multi_pmvnorm(mean = traits[tip,], sigma = R, binaries = traits_indiv_discr_unique[[tip]]$SPs)) * traits_indiv_discr_unique[[tip]]$counts))
+               , times = 10)
+
+multi_pmvnorm <- function(mean, sigma, binaries, algorithm = c("GenzBretz", "Miwa")[1]){
+  upper <- binaries
+  upper[] <- 0
+  lower <- upper
+  upper[binaries == 1] <- Inf
+  lower[binaries == 0] <- -Inf
+  return(sapply(1:dim(binaries)[1], function(indiv) pmvnorm(lower = lower[indiv,], upper = upper[indiv,], mean = mean, sigma = sigma, algorithm = algorithm)[1]))
+}
+
+uniqueSP <- function(indivs){
+  SPs <- table(sapply(1:length(indivs[,1]), function(indiv) paste0(indivs[indiv,], collapse = "")))
+  counts <- as.numeric(SPs)
+  SPs <- t(sapply(1:length(SPs), function(SP) as.numeric(unlist(strsplit(names(SPs)[SP], "")))))
+  return(list(SPs = SPs, counts = counts))
+}
 
 prune <- function(tree){ 
   ntips <- length(tree$tip.label)
