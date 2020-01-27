@@ -62,6 +62,126 @@ microbenchmark(sapply(1:length(traits_indiv_discr_unique),
                       function(tip) sum(log(multi_pmvnorm(mean = traits[tip,], sigma = R, binaries = traits_indiv_discr_unique[[tip]]$SPs)) * traits_indiv_discr_unique[[tip]]$counts))
                , times = 10)
 
+#verify anticipated operation
+mean <- c(1,2,3) - 2
+cov <- R[1:3,1:3]/20
+binaries <- t(as.matrix(c(1,1,1)))
+
+nsamp <- 1E4
+Xs <- rmvnorm(nsamp, mean = mean, sigma = cov)
+sum(sapply(1:nsamp, function(samp)  all(sapply(1:length(Xs[samp,]), function(tr) ifelse(binaries[1,tr], Xs[samp,tr], -Xs[samp,tr]) > 0)))) / nsamp
+multi_pmvnorm(mean = mean, sigma = cov, binaries = binaries)
+#OK seems to work
+
+
+#########################################
+### let's try to make an MCMC sampler ###
+#########################################
+
+#first let's resimulate data
+nTaxa <- 8
+tree <- tess.sim.taxa(n = 1, nTaxa = nTaxa, lambda = 1, mu = 0, max = 1E3)[[1]]
+R <- diag(c(1.5,2.3,1.7)) %*% matrix(c(1,0.5,0.6,0.5,1,0.4,0.6,0.4,1), 3, 3) %*% diag(c(1.5,2.3,1.7)); rownames(R) <- colnames(R) <- paste0("tr", 1:dim(R)[1])
+root_state <- rep(0, dim(R)[1])
+traits <- mvSIM(tree, model="BM1", param=list(sigma=R, theta=root_state)) 
+
+#simulate thresholded traits at the population level
+n_indiv <- 20
+threshold <- rep(0, dim(traits)[2])
+traits_indiv <- lapply(1:dim(traits)[1], function(tip) rmvnorm(n = n_indiv, mean = traits[tip,], sigma = R)); names(traits_indiv) <- rownames(traits)
+traits_indiv_discr <- lapply(1:dim(traits)[1], function(tip) t(sapply(1:n_indiv, function(indiv) as.numeric(traits_indiv[[tip]][indiv,] > threshold)))); names(traits_indiv_discr) <- names(traits_indiv) 
+
+#now try to infer data-generating tree
+iter <- 1e3
+nTraits <- dim(R)[1]
+thin <- 2 # set the thinning rate
+MCMCTree <- unroot(rtree(n=numTips)) ##TREE SHOULD BE UNROOTED
+MCMCTree$edge.length <- rep(1, (2*numTips-3))
+MCMCTree$tip.label <- sample(populations, length(populations), replace = F)
+sigmaBM <- sig
+
+trees <- rmtree(N = iterMCMC/thin, n = nTaxa, rooted = F)
+LLs <- vector(length = iterMCMC)
+est_traits <- array(data = 0, dim = c(nTaxa, nTraits, iter / thin), dimnames = list(tree$tip.label, rownames(R), 1:(iter/thin)))
+
+for (i in 1:iter){
+  if(i%%100==0){print(c(i, testLLs[i-1]))}
+  prop <- sample(x = 1:30, size = 1)
+  edgeBAD <- T
+  while(edgeBAD){
+    
+    if(prop <= 5){testTree <- rNNI(MCMCTree)} else
+      if(prop > 5 & prop < 11){testTree <- rSPR(MCMCTree)} else
+        if(prop > 10 & prop < 16){testTree <- MCMCTree
+        edge <- sample(1:length(testTree$edge.length), size=1)
+        testTree$edge.length[edge] <- testTree$edge.length[edge] + rnorm(n = 1, mean = 0, sd = .05)} else
+          if(prop==17){testTree <- MCMCTree
+          edge <- sample(1:length(testTree$edge.length), size=1)
+          testTree$edge.length[edge] <- testTree$edge.length[edge] + rnorm(n = 1, mean = 0, sd = .05)
+          edge <- sample(1:length(testTree$edge.length), size=1)
+          testTree$edge.length[edge] <- testTree$edge.length[edge] + rnorm(n = 1, mean = 0, sd = .05)} else
+            if(prop>17 & prop < 20){testTree <- MCMCTree
+            testTree$edge.length <- testTree$edge.length + rnorm(n = 1, mean = 0, sd = .05)} 
+    if(prop>19 & prop < 27){testTree <- MCMCTree
+    psEstTest <- psEst
+    pop <- sample(1:length(psEstTest[,1]), size = 1)
+    psEstTest[pop,] <- psEstTest[pop,] + 
+      rmvnorm(n = 1, mean = rep(0, length(psEstTest[pop,])), sigma = diag(.002, nrow = length(psEstTest[pop,])))
+    psEstTest <- abs(psEstTest)
+    tooBig <- which(psEstTest > 1, arr.ind = T)
+    psEstTest[tooBig] <- 2 - psEstTest[tooBig]
+    meanLiabsEst <- qnorm(psEstTest, mean = 0, sd = 1)
+    rownames(meanLiabsEst) <- populations
+    }
+    if(prop>26 & prop < 31){testTree <- MCMCTree
+    psEstTest <- psEst
+    psEstTest <- psEstTest + 
+      rmvnorm(n = length(psEstTest[,1]), mean = rep(0, length(psEstTest[pop,])), sigma = diag(.002, nrow = length(psEstTest[pop,])))
+    psEstTest <- abs(psEstTest)
+    tooBig <- which(psEstTest > 1, arr.ind = T)
+    psEstTest[tooBig] <- 2 - psEstTest[tooBig]
+    meanLiabsEst <- qnorm(psEstTest, mean = 0, sd = 1)
+    rownames(meanLiabsEst) <- populations
+    } 
+    
+    
+    if(all(testTree$edge.length > 0)) {edgeBAD <- F}
+  }
+  testLL <- BMpruneLL(meanLiabsEst, sigmaBM, testTree) + 
+    sum(sapply(1:length(testTree$edge.length), function(edge) dexp(x = testTree$edge.length[edge], rate = 2, log = T))) +
+    sum(dbinom(prob = psEstTest, x = traitCounts, size = nObs, log = T)) 
+  
+  testLLs[i] <- testLL
+  if(testLL > MCMCLL){
+    MCMCLL <- testLL
+    MCMCTree <- testTree
+    psEst <- psEstTest
+    up <- up + 1
+  } else if (runif(n = 1, min = 0, max = 1) < exp(testLL - MCMCLL)){
+    MCMCLL <- testLL
+    MCMCTree <- testTree
+    psEst <- psEstTest
+    down <- down + 1
+    # print("lower")    }
+  } else {same <- same + 1}
+  if(i %% thin == 0){
+    MCMCTrees[[i/thin]] <- MCMCTree
+    estimatedMeanLiabilities <- abind(estimatedMeanLiabilities, meanLiabsEst, along = 3)
+  }
+  if(i %% 5000 == 0){
+    par(mfrow = c(1,2))
+    plot(tree); axisPhylo(); title("true, data-generating tree")
+    plot(MCMCTree); axisPhylo(); title(paste("Current Tree, iteration:", i))
+  }
+}
+prematurePause <- MCMCTrees[sapply(1:length(MCMCTrees), function(x) MCMCTrees[[x]]$Nnode != 1)]
+MCMCTrees_noBurn <- prematurePause[-(1:(length(prematurePause)/5))]
+conTree <- consensus(MCMCTrees_noBurn, p=.35)
+conTree <- root(conTree, "BUSHMAN", resolve.root = T)
+plot(conTree)
+title("Inferred Majority-Rule Consensus Tree (no BLs)")
+plot(tree)
+
 multi_pmvnorm <- function(mean, sigma, binaries, algorithm = c("GenzBretz", "Miwa")[1]){
   upper <- binaries
   upper[] <- 0
