@@ -384,7 +384,7 @@ target_corr
 par(mfrow = c(3, 2))
 
 corr_init <- diag(dim)
-n_iter <- 1E6
+n_iter <- 1E5
 corr_mats <- replicate(n_iter, corr_init)
 
 for(i in 2:n_iter){
@@ -395,7 +395,7 @@ for(i in 2:n_iter){
   log_prop_ratio <-  0
   log_dens_ratio <- sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = corr_prop, log = T)) - 
     sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = corr_mats[,,i-1], log = T))
-  # log_dens_ratio <- 0 #check if sampling from uniform
+  log_dens_ratio <- 0 #check if sampling from uniform
   log_accept_prob <- log_prop_ratio + log_dens_ratio
   if(log(runif(1, 0, 1)) < log_accept_prob){
     corr_mats[,,i] <- corr_prop
@@ -452,7 +452,7 @@ dirichlet_prop <- function(cor, tp, i_weight = 2, offset_1 = 0, offset_2 = 0){
   return(list(sample = prop_cor, log_prop_ratio = log_prop_ratio))
 }
 
-dim <- 3
+dim <- 4
 target_corr <- rlkj(dim)
 dirichlet_tp <- 20
 true_corrs <- target_corr[upper.tri(target_corr)]
@@ -511,53 +511,6 @@ for(i in 1:choose(dim, 2)){
 #let's try to go back to the tuned lkj proposal distribution
 
 
-blooming_onion_tune <- function (cor, varB = 0.01, varN = 0.1, redrawBeta = T) {
-  d <- dim(cor)[1]
-  R <- matrix(0, d, d)
-  permute_cols <- sample(1:d)
-  cor <- cor[permute_cols, permute_cols]
-  m <- d - 1
-  chol_cor <- chol(cor)
-  R[1:m, 1:m] <- chol_cor[1:m,1:m]
-  target_chol <- chol_cor[1:d,d]
-  # target_y <- 1 - (target_chol[d]^2)
-  # target_z <- target_chol[1:m] / sqrt(target_y)
-  # s1 <- ((1-target_y) / varB - 1 / target_y) * target_y^2
-  # s2 <- s1 * (1 / target_y - 1)
-  # y <- rbeta(1, shape1 = s1, shape2 = s2)
-  # z <- rnorm(m, target_z, sqrt(varN))
-  # z <- z/sqrt(crossprod(z)[1])
-  # R[1:m, m + 1] <- sqrt(y) * z
-  # R[m + 1, m + 1] <- sqrt(1 - y)
-  # #log orig in new center - log new in orig prop dist
-  # s1_rev <- ((1-y) / varB - 1 / y) * y^2
-  # s2_rev <- s1_rev * (1 / y - 1)
-  # log_prop_ratio <- dbeta(x = target_y, shape1 = s1_rev, shape2 = s2_rev) - dbeta(x = y, shape1 = s1, shape2 = s2) +
-  #   sum(dnorm(x = target_z, mean = z, sd = sqrt(varN))) - sum(dnorm(x = z, mean =target_z, sd = sqrt(varN)))
-  target_y <- 1 - (target_chol[d]^2)
-  target_z <- target_chol[1:m] / sqrt(target_y)
-  if(redrawBeta){
-    alpha <- 1 #when eta = 1
-    y <- rbeta(1, (d-1)/2, alpha)
-  } else {
-    y <- target_y 
-  }
-  z <- rnorm(m, target_z, sqrt(varN))
-  z <- z/sqrt(crossprod(z)[1])
-  R[1:m, m + 1] <- sqrt(y) * z
-  R[m + 1, m + 1] <- sqrt(1 - y)
-  #log orig in new center - log new in orig prop dist
-  if(redrawBeta){
-    log_prop_ratio <- dbeta(x = target_y, (d-1)/2, alpha) - dbeta(x = y, (d-1)/2, alpha) +
-      sum(dnorm(x = target_z, mean = z, sd = sqrt(varN))) - sum(dnorm(x = z, mean =target_z, sd = sqrt(varN)))
-    } else {
-    log_prop_ratio <- sum(dnorm(x = target_z, mean = z, sd = sqrt(varN))) - sum(dnorm(x = z, mean =target_z, sd = sqrt(varN)))
-  }
-  R <- crossprod(R)
-  R <- R[order(permute_cols), order(permute_cols)]
-  return(list(sample = R, log_prop_ratio = log_prop_ratio))
-}
-
 blooming_onion_ind_tune <- function (cor = 1, indices = NA, eta = 1) {
   d <- dim(cor)[1]
   chol_cor <- chol(cor)
@@ -592,19 +545,105 @@ blooming_onion_ind_tune <- function (cor = 1, indices = NA, eta = 1) {
   return(R_new)
 }
 
-dim <- 30
+
+blooming_onion_tune <- function (cor, varB = 0.01, varN = 0.1, redrawBeta = T, betaWindow = NA) {
+  d <- dim(cor)[1]
+  R <- matrix(0, d, d)
+  permute_cols <- sample(1:d)
+  cor <- cor[permute_cols, permute_cols]
+  m <- d - 1
+  chol_cor <- chol(cor)
+  R[1:m, 1:m] <- chol_cor[1:m,1:m]
+  target_chol <- chol_cor[1:d,d]
+  target_y <- 1 - (target_chol[d]^2)
+  target_z <- target_chol[1:m] / sqrt(target_y)
+  if(redrawBeta){
+    alpha <- 1 #when eta = 1
+    if(is.na(betaWindow)){
+      y <- rbeta(1, m/2, alpha)
+    } else {
+      betaBounds <- c(target_y + betaWindow, target_y - betaWindow)
+      betaBounds[betaBounds > 1] <- 1
+      betaBounds[betaBounds < -1] <- -1
+      betaBounds_prob <- pbeta(q = betaBounds, shape1 = m/2, shape2 = alpha)
+      unif_draw <- runif(1)
+      beta_subprob <- betaBounds_prob[1] - betaBounds_prob[2]
+      betaProb <- betaBounds_prob[2] + beta_subprob * unif_draw
+      y <- qbeta(p = betaProb, shape1 = (d-1)/2, shape2 = alpha)
+    }
+  } else {
+    y <- target_y 
+  }
+  z <- rnorm(m, target_z, sqrt(varN))
+  z <- z/sqrt(crossprod(z)[1])
+  R[1:m, m + 1] <- sqrt(y) * z
+  R[m + 1, m + 1] <- sqrt(1 - y)
+  #log orig in new center - log new in orig prop dist
+  if(redrawBeta){
+    if(is.na(betaWindow)){
+      
+      # log_prop_ratio <- dbeta(x = target_y, (d-1)/2, alpha) - dbeta(x = y, (d-1)/2, alpha) +
+      #   sum(dnorm(x = target_z, mean = z, sd = sqrt(varN))) - sum(dnorm(x = z, mean =target_z, sd = sqrt(varN)))
+      
+      log_prop_ratio <- 0
+      
+    } else {
+      
+      betaBounds_rev <- c(y + betaWindow, y - betaWindow)
+      betaBounds_rev[betaBounds_rev > 1] <- 1
+      betaBounds_rev[betaBounds_rev < -1] <- -1
+      
+      #############################################################################
+      # is it the truncated beta densities that are needed for the proposal ratio?
+      #############################################################################
+    
+      # betaBounds_prob_rev <- pbeta(q = betaBounds_rev, shape1 = (d-1)/2, shape2 = alpha)
+      # beta_subprob_rev <- betaBounds_prob_rev[1] - betaBounds_prob_rev[2]
+      #   
+      # log_prop_ratio <- dbeta(x = target_y, (d-1)/2, alpha) / beta_subprob_rev - dbeta(x = y, (d-1)/2, alpha) / beta_subprob +
+      #   sum(dnorm(x = target_z, mean = z, sd = sqrt(varN))) - sum(dnorm(x = z, mean =target_z, sd = sqrt(varN)))
+      
+      ####################################
+      # what about the uniform densities?
+      ####################################
+      
+      # log_prop_ratio <- log(abs(1 / diff(betaBounds_rev))) - log(abs(1 / diff(betaBounds))) +
+      #   sum(dnorm(x = target_z, mean = z, sd = sqrt(varN))) - sum(dnorm(x = z, mean =target_z, sd = sqrt(varN)))
+
+      ###########################################
+      # ... what about the beta cumulative probs?
+      ###########################################
+      
+      betaBounds_prob_rev <- pbeta(q = betaBounds_rev, shape1 = (d-1)/2, shape2 = alpha)
+      beta_subprob_rev <- betaBounds_prob_rev[1] - betaBounds_prob_rev[2]
+
+      log_prop_ratio <- log(abs(1 / beta_subprob_rev)) - log(abs(1 / beta_subprob)) +
+        sum(dnorm(x = target_z, mean = z, sd = sqrt(varN))) - sum(dnorm(x = z, mean =target_z, sd = sqrt(varN)))
+      
+    }
+  } else {
+    log_prop_ratio <- sum(dnorm(x = target_z, mean = z, sd = sqrt(varN))) - sum(dnorm(x = z, mean =target_z, sd = sqrt(varN)))
+  }
+  R <- crossprod(R)
+  R <- R[order(permute_cols), order(permute_cols)]
+  return(list(sample = R, log_prop_ratio = log_prop_ratio))
+}
+
+
+dim <- 15
 target_corr <- rlkj(dim)
 true_corrs <- target_corr[upper.tri(target_corr)]
-n_obs <- 50
-varN <- 2E-3
-sampleUniform <- F
+n_obs <- 20
+varN <- 1
+betaWindow <- 0.4
+sampleUniform <- T
 obs <- rmvnorm(n = n_obs, mean = rep(0, dim), sigma = target_corr)
 emp_corrs <- cor(obs)[upper.tri(diag(dim))]
 par(mfrow = c(ifelse(dim < 5, choose(dim, 2), 4), 2))
 
 corr_init <- rlkj(dim) 
-n_iter <- 1E6
-thin <- 2E3
+n_iter <- 1E7
+thin <- 1E2
 corr_mats <- replicate(n_iter, diag(dim))
 corr_mats[,,1] <- corr_init
 
@@ -612,11 +651,12 @@ n_accept <- 0
 for(i in 2:n_iter){
   if(i %% (n_iter / 10) == 0){cat(paste0(i / n_iter * 100, "%  "))}
   trait_to_prop <- sample(1:dim, sample(1:(dim-1), 1))
-  corr_prop_rat <- blooming_onion_tune(corr_mats[,,i-1], varB = 0.00, varN = varN, redrawBeta = T)
+  corr_prop_rat <- blooming_onion_tune(corr_mats[,,i-1], varB = 0.00, varN = varN, redrawBeta = T, betaWindow = betaWindow)
   corr_prop <- corr_prop_rat$sample
   
   log_prop_ratio <-  corr_prop_rat$log_prop_ratio
-  
+  # cat(log_prop_ratio)
+
   if(sampleUniform){
     log_dens_ratio <- 0 #check if sampling from uniform
   } else {
@@ -633,7 +673,7 @@ for(i in 2:n_iter){
 }
 
 str(corr_mats)
-thindices <- round(seq(1, n_iter, length.out = n_iter / thin))
+thindices <- round(seq(1, n_iter, length.out = round(n_iter/thin)))
 corr_mats <- corr_mats[,,thindices]
 
 corrs <- sapply(1:length(thindices), function(x) corr_mats[,,x][upper.tri(diag(dim))])
@@ -655,4 +695,35 @@ for(i in 1:choose(dim, 2)){
 
 paste0("acceptance ratio = ", n_accept / n_iter)
 
-#corr_mats <- aperm((rlkjcorr(1E5, K = dim+4, eta = 1)), c(2,3,1))
+if(sampleUniform){
+  eta <- 1
+
+  par(mfrow = c(3, 2))
+  dets_samp <- (sapply(1:length(thindices), function(x) det(corr_mats[,,x])))[(length(thindices) / 5) : length(thindices)]
+  hist(dets_samp, main = "Sampled Determinants")
+  title(main = paste0("dimension = ", dim), outer = T, line = -2, cex.main = 2)
+  
+  known_lkj_distribution <- aperm((rlkjcorr(length(thindices) * 0.8, K = dim, eta = eta)), c(2,3,1))
+  corrs_targ <- sapply(1:(length(thindices) * 0.8), function(x) known_lkj_distribution[,,x][upper.tri(diag(dim))])
+  dets_targ <- (sapply(1:(length(thindices) * 0.8), function(x) det(known_lkj_distribution[,,x])))
+  hist(dets_targ, main = "Target Determinants")
+  
+  plot(x = quantile(dets_samp, probs = c(1:99)/100),
+       y = quantile(dets_targ, probs = c(1:99)/100),
+       type = "l", main = "Q-Q Plot of Determinants", xlab = "samples", ylab = "target"); abline(a = 0, b = 1, lty = 2, col = 3)
+  legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,3), lty = c(1,2))
+  
+  plot(x = quantile(as.vector(corrs), probs = c(1:99)/100),
+       y = quantile(as.vector(corrs_targ), probs = c(1:99)/100),
+       type = "l", main = "Q-Q Plot of Marginal Correlations", xlab = "samples", ylab = "target"); abline(a = 0, b = 1, lty = 2, col = 3)
+  legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,3), lty = c(1,2))
+  legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,3), lty = c(1,2))
+  
+  hist(as.vector(corrs), main = "Marginal Sampled Correlations")
+  hist(as.vector(corrs_targ), main = "Marginal Target Correlations")
+}
+
+#earlier algorithm does the desired gibbs sampling, but this one -- with varN = 1E5 -- does not?!??!
+#turning off the proposal fixes the issue
+#can also sample from a uniform on the probability scale -- do an mcmc inside an mcmc... 
+#so figure out probability of target in beta, sample +/- some sliding window from that, convert back to the beta
