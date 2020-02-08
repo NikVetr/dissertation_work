@@ -40,3 +40,37 @@ microbenchmark(times = 500,
                chol_update(t(U[(ind+1):(dim),(ind+1):(dim)]), U[ind,(ind+1):dim]), 
                choldrop(U, ind), 
                backsolve(Ur, (Rn_target[1:(dim-1)]), transpose = T))
+
+choleskalator <- function(mat, ind){
+  dim <- dim(mat)[1]
+  ind_removed <- mgcv::choldrop(mat, ind)
+  Rn_target <- c((t(mat) %*% mat[,ind])[-ind],1)  
+  URn_target_sle <- backsolve(ind_removed, (Rn_target[1:(dim-1)]), transpose = T) 
+  URn_target_sle <- c(URn_target_sle, sqrt(1 - crossprod(URn_target_sle))) 
+  return(cbind(rbind(ind_removed, rep(0,dim-1)), URn_target_sle))
+}
+
+dims <- round(2^((1:22)/2))+1
+times <- matrix(data = 0, nrow = length(dims), ncol = 3, dimnames = list(1:length(dims), 1:3))
+times[,1] <- dims; colnames(times)[1] <- "dim"
+
+for(i in 1:length(dims)){
+  cat(paste0(i, " "))
+  dim <- dims[i]
+  ind <- round(dim/2)
+  cormat <- rlkj(dim)
+  cholfac <- chol(cormat)
+  mbm <- microbenchmark(times = 5,
+               chol(cormat), 
+               choleskalator(cholfac, ind))
+  times[i,2] <- mean(mbm$time[mbm$expr == levels(mbm$expr)[1]])
+  times[i,3] <- mean(mbm$time[mbm$expr == levels(mbm$expr)[2]])
+}
+
+colnames(times)[2] <- levels(mbm$expr)[1]
+colnames(times)[3] <- levels(mbm$expr)[2]
+
+plot(times[,1], times[,2], type = "l", col = "red", xlab = "dimensionality", ylab = "time")
+lines(times[,1], times[,3], type = "l", col = "green")
+
+times[,2] / times[,3] 

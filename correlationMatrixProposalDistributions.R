@@ -824,7 +824,7 @@ for(i in 2:n_iter){
   
   #record given thinning 
   if(i %% thin == 0){
-    corr_mats[,,i/thin] <- corr_prop
+    corr_mats[,,i/thin] <- corr_curr
   }
 
 }
@@ -876,3 +876,198 @@ if(sampleUniform){
 
 paste0("acceptance ratio = ", n_accept / n_iter)
 
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### 
+### let's see if we can poke other indicesas well??????????????
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### 
+
+#nope, does not appear to!?
+
+### ### ### ### ### ### ### ### ### ### ### ### 
+### How about in the more efficient formulation?
+### ### ### ### ### ### ### ### ### ### ### ### 
+
+choleskalator <- function(mat, ind){
+  dim <- dim(mat)[1]
+  if(ind == dim){
+    return(mat)
+  } else {
+    ind_removed <- mgcv::choldrop(mat, ind)
+    Rn_target <- c((t(mat) %*% mat[,ind])[-ind],1)  
+    URn_target_sle <- backsolve(ind_removed, (Rn_target[1:(dim-1)]), transpose = T) 
+    URn_target_sle <- c(URn_target_sle, sqrt(1 - crossprod(URn_target_sle))) 
+    return(cbind(rbind(ind_removed, rep(0,dim-1)), URn_target_sle))
+  }
+}
+
+
+blooming_onion_tune_chol <- function (upper_cholesky_factor, ind, varN = 0.1, betaWindow = NA) {
+  d <- dim(upper_cholesky_factor)[1]
+  m <- d-1
+  R <- matrix(0, d, d)
+  chol_cor <- choleskalator(upper_cholesky_factor, ind)
+  R[1:m, 1:m] <- chol_cor[1:m,1:m]
+  target_chol <- chol_cor[1:d,d]
+  target_y <- 1 - (target_chol[d]^2)
+  target_z <- target_chol[1:m] / sqrt(target_y)
+  if(!is.na(betaWindow)){
+    alpha <- 1 
+    if(betaWindow >= 1){
+      y <- rbeta(1, m/2, alpha)
+    } else {
+      betaBounds <- c(target_y + betaWindow, target_y - betaWindow)
+      betaBounds[betaBounds > 1] <- 1
+      betaBounds[betaBounds < -1] <- -1
+      betaBounds_prob <- pbeta(q = betaBounds, shape1 = m/2, shape2 = alpha)
+      unif_draw <- runif(1)
+      beta_subprob <- betaBounds_prob[1] - betaBounds_prob[2]
+      betaProb <- betaBounds_prob[2] + beta_subprob * unif_draw
+      y <- qbeta(p = betaProb, shape1 = (d-1)/2, shape2 = alpha)
+    }
+  } else {
+    y <- target_y 
+  }
+  z <- rnorm(m, target_z, sqrt(varN))
+  z <- z/sqrt(crossprod(z)[1])
+  R[1:m, m + 1] <- sqrt(y) * z
+  R[m + 1, m + 1] <- sqrt(1 - y)
+  
+  if(redrawBeta){
+    if(is.na(betaWindow)){
+      
+      log_prop_ratio <- 0
+      
+    } else {
+      
+      betaBounds_rev <- c(y + betaWindow, y - betaWindow)
+      betaBounds_rev[betaBounds_rev > 1] <- 1
+      betaBounds_rev[betaBounds_rev < -1] <- -1
+      
+      betaBounds_prob_rev <- pbeta(q = betaBounds_rev, shape1 = (d-1)/2, shape2 = alpha)
+      beta_subprob_rev <- betaBounds_prob_rev[1] - betaBounds_prob_rev[2]
+      
+      log_prop_ratio <- log(abs(1 / beta_subprob_rev)) - log(abs(1 / beta_subprob)) 
+      
+    }
+  } else {
+    log_prop_ratio <- 0
+  }
+  
+  return(list(sample = R, log_prop_ratio = log_prop_ratio))
+}
+
+dim <- 500
+cormat <- rlkj(dim)
+cholfac <- chol(cormat)
+microbenchmark(blooming_onion_tune_chol(upper_cholesky_factor = cholfac, ind = sample(1:dim, 1), varN = 0.1, betaWindow = 0.1), 
+               blooming_onion_tune_clean(cor = cormat, varN = 0.1, betaWindow = 0.1))
+
+
+dim <- 5
+target_corr <- rlkj(dim)
+true_corrs <- target_corr[upper.tri(target_corr)]
+n_obs <- 40
+varN <- 0.5
+betaWindow <- 0.2
+sampleUniform <- T
+obs <- rmvnorm(n = n_obs, mean = rep(0, dim), sigma = target_corr)
+emp_corrs <- cor(obs)[upper.tri(diag(dim))]
+par(mfrow = c(ifelse(dim < 5, choose(dim, 2), 4), 2))
+
+corr_init <- chol(rlkj(dim))
+n_iter <- 1E6
+thin <- 1E2
+n_out <- round(n_iter/thin)
+
+corr_mats <- replicate(n_out, diag(dim))
+corr_mats[,,1] <- corr_curr <-  corr_init
+
+inds_init <- 1:dim
+inds <- replicate(n_out, rep(0,dim))
+inds[,1] <- inds_curr <-  inds_init
+
+
+n_accept <- 0
+for(i in 2:n_iter){
+  
+  #progress bar
+  if(i %% (n_iter / 10) == 0){cat(paste0(i / n_iter * 100, "%  "))}
+  
+  #propose a move
+  ind_to_prop <- sample(1:dim, 1)
+  inds_prop <- c(inds_curr[-ind_to_prop], inds_curr[ind_to_prop])
+  corr_prop_rat <- blooming_onion_tune_chol(corr_curr, ind = ind_to_prop, varN = varN, betaWindow = betaWindow)
+  corr_prop <- corr_prop_rat$sample
+  log_prop_ratio <-  corr_prop_rat$log_prop_ratio
+  
+  #compute ratio of target densities
+  if(sampleUniform){
+    log_dens_ratio <- 0 
+  } else {
+    log_dens_ratio <- sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = corr_prop, log = T)) - 
+      sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = corr_mats[,,i-1], log = T))
+  }
+  
+  #accept or reject
+  log_accept_prob <- log_prop_ratio + log_dens_ratio
+  if(log(runif(1, 0, 1)) < log_accept_prob){
+    corr_curr <- corr_prop
+    inds_curr <- inds_prop
+    n_accept <- n_accept + 1
+  } 
+  
+  #record given thinning 
+  if(i %% thin == 0){
+    corr_mats[,,i/thin] <- corr_curr
+    inds[,i/thin] <- inds_curr
+  }
+  
+}
+
+corr_mats <- sapply(1:n_out, function(x) (t(corr_mats[,,x]) %*% corr_mats[,,x])[inds[,x],inds[,x]], simplify = "array")
+
+corrs <- sapply(1:n_out, function(x) corr_mats[,,x][upper.tri(diag(dim))])
+ind_mat <- matrix(1:dim^2, dim, dim)
+target_ind_mat <- ind_mat[upper.tri(ind_mat)]
+ind_mat <- t(sapply(1:choose(dim, 2), function(x) which(ind_mat == target_ind_mat[x], arr.ind = T)))
+for(i in 1:choose(dim, 2)){
+  hist(corrs[i,][(n_out / 5) : n_out], breaks = 1E2, main = paste0("correlation betw. trait ", ind_mat[i,1], " and trait ", ind_mat[i,2]));
+  if(i == 1){legend(x = "topright", lwd = 2, legend = c("true value", "observed value"), col = c("red", "purple"))}
+  abline(v = true_corrs[i], col = 2, lwd = 2); abline(v = emp_corrs[i], col = "purple", lwd = 2)
+  plot(corrs[i,], type = "l"); lines(corrs[i,][1:(n_out/5)], col = "grey"); abline(h = true_corrs[i], col = 2, lwd = 2); abline(h = emp_corrs[i], col = "purple", lwd = 2)
+}
+for(i in 1:choose(dim, 2)){
+  hist(corrs[i,][(n_out / 5) : n_out], breaks = 1E2, main = paste0("correlation betw. trait ", ind_mat[i,1], " and trait ", ind_mat[i,2]), xlim = c(-1,1));
+  if(i == 1){legend(x = "topright", lwd = 2, legend = c("true value", "observed value"), col = c("red", "purple"))}
+  abline(v = true_corrs[i], col = 2, lwd = 2); abline(v = emp_corrs[i], col = "purple", lwd = 2)
+  plot(corrs[i,], type = "l", ylim = c(-1,1)); lines(corrs[i,][1:(n_out/5)], col = "grey"); abline(h = true_corrs[i], col = 2, lwd = 2); abline(h = emp_corrs[i], col = "purple", lwd = 2)
+}
+
+if(sampleUniform){
+  eta <- 1
+  
+  par(mfrow = c(3, 2))
+  dets_samp <- (sapply(1:n_out, function(x) det(corr_mats[,,x])))[(n_out / 5) : n_out]
+  hist(dets_samp, main = "Sampled Determinants")
+  title(main = paste0("dimension = ", dim), outer = T, line = -2, cex.main = 2)
+  
+  known_lkj_distribution <- aperm((rlkjcorr(n_out * 0.8, K = dim, eta = eta)), c(2,3,1))
+  corrs_targ <- sapply(1:(n_out * 0.8), function(x) known_lkj_distribution[,,x][upper.tri(diag(dim))])
+  dets_targ <- (sapply(1:(n_out * 0.8), function(x) det(known_lkj_distribution[,,x])))
+  hist(dets_targ, main = "Target Determinants")
+  
+  plot(x = quantile(dets_samp, probs = c(1:99)/100),
+       y = quantile(dets_targ, probs = c(1:99)/100),
+       type = "l", main = "Q-Q Plot of Determinants", xlab = "samples", ylab = "target"); abline(a = 0, b = 1, lty = 2, col = 3)
+  legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,3), lty = c(1,2))
+  
+  plot(x = quantile(as.vector(corrs), probs = c(1:99)/100),
+       y = quantile(as.vector(corrs_targ), probs = c(1:99)/100),
+       type = "l", main = "Q-Q Plot of Marginal Correlations", xlab = "samples", ylab = "target"); abline(a = 0, b = 1, lty = 2, col = 3)
+  legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,3), lty = c(1,2))
+  legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,3), lty = c(1,2))
+  
+  hist(as.vector(corrs), main = "Marginal Sampled Correlations")
+  hist(as.vector(corrs_targ), main = "Marginal Target Correlations")
+}
+
+paste0("acceptance ratio = ", n_accept / n_iter)
