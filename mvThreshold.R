@@ -12,6 +12,7 @@ library(TESS)
 tree <- tess.sim.taxa(n = 1, nTaxa = 8, lambda = 1, mu = 0, max = 1E3)[[1]]
 R <- diag(c(1.5,2.3,1.7)) %*% matrix(c(1,0.5,0.6,0.5,1,0.4,0.6,0.4,1), 3, 3) %*% diag(c(1.5,2.3,1.7))
 nt <- 8; R <- cov[1:nt, 1:nt]
+R <- diag(nt)
 root_state <- rep(0, dim(R)[1])
 traits <- mvSIM(tree, model="BM1", param=list(sigma=R, theta=root_state)) 
 
@@ -24,6 +25,9 @@ contrasts <- prunes[[1]] %*% traits[rownames(prunes[[3]])[1:length(tree$tip.labe
 phylocv <- vcv.phylo(reroot(tree, node.number = which(tree$tip.label == rownames(traits)[1])))[-1,-1]
 dmvnorm(x = c(t(traits[-1,])), mean = rep(traits[1,], length(traits[-1,1])), sigma = kronecker(phylocv,R), log = T)
 sum(sapply(1:(length(tree$tip.label)-1), function(x) dmvnorm(contrasts[x,], sigma = R*prunes[[2]][x], log = T)))
+if(all(R[upper.tri(R)] == 0))(
+  sum(sapply(1:(length(tree$tip.label)-1), function(x) dnorm(contrasts[x,], sd = sqrt(prunes[[2]][x]), log = T)))
+)
 BMpruneLL(traits = traits, sig = R, tree = tree)
 BMpruneLLuvtChol(rawTraits = traits, sig = R, tree = tree)
 
