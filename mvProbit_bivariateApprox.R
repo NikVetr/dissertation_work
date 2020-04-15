@@ -8,6 +8,11 @@ library(doParallel)
 library(foreach)
 library(data.table)
 library(readr)
+library(microbenchmark)
+library(TESS)
+library(mvMORPH)
+library(questionr)
+library(tictoc)
 ?pbivnorm
 
 rlkj <- function (K, eta = 1) {
@@ -682,28 +687,43 @@ plot(R_est[upper.tri(R)], R[upper.tri(R)], xlim = c(-1,1), ylim = c(-1,1), xlab 
 
 
 #first let's resimulate data
-nTaxa <- 30
-d_traits <- 80
-n_indiv <- 200
-n_thresholds <- 4 #for variable numbers of thresholds, just need to buffer with 'Inf's on the right
+nTaxa <- 10
+d_traits <- 20
+n_indiv <- sample(15:40, nTaxa, replace = T)
+n_thresholds <- sample(1:5, d_traits, T) #for variable numbers of thresholds, just need to buffer with 'Inf's on the right
 weighPCV <- F
-
 
 tree <- tess.sim.taxa(n = 1, nTaxa = nTaxa, lambda = 1, mu = 0, max = 1E3)[[1]]
 target_tree_height <- 2
 tree$edge.length <- tree$edge.length * target_tree_height / node.depth.edgelength(tree)[1]
 
-thresholds <- cbind(rep(0, d_traits), matrix(runif(n = (n_thresholds - 1) * d_traits, min = 0.25, max = 1), nrow = d_traits, ncol = n_thresholds-1))
+#sample thresholds from scaled lognormal distribution
+
+logn_mu <- 0.5
+logn_sd <- 0.25
+threshold_spacings <- sapply(1:d_traits, function(trait) exp(rnorm(n = n_thresholds[trait]-1, mean = logn_mu, sd = logn_sd)) / (n_thresholds[trait]-1))
+threshold_spacings[n_thresholds == 1] <- Inf
+max_thresholds_count <- max(n_thresholds)
+threshold_spacings <- t(sapply(1:length(threshold_spacings), function(trait) c(threshold_spacings[[trait]], rep(Inf, max_thresholds_count - 1 - length(threshold_spacings[[trait]])))))
+# thresholds <- cbind(rep(0, d_traits), matrix(runif(n = (n_thresholds - 1) * d_traits, min = 0.25, max = 1), nrow = d_traits, ncol = n_thresholds-1))
+thresholds <- cbind(rep(0, d_traits), threshold_spacings)
 thresholds <- t(apply(thresholds, 1, cumsum))
-threshold_diffs <- sapply(1:d_traits, function(trait) diff(thresholds[trait,]))
+threshold_diffs <- t(sapply(1:d_traits, function(trait) diff(thresholds[trait,])))
+threshold_diffs[is.na(threshold_diffs)] <- Inf
 R <- rlkj(d_traits); rownames(R) <- colnames(R) <- paste0("tr", 1:dim(R)[1])
-if(n_thresholds %% 2 == 1){root_state <- thresholds[,(median(1:n_thresholds))]} else {root_state <- (thresholds[,(median(1:n_thresholds) - 0.5)] + thresholds[,(median(1:n_thresholds) + 0.5)]) / 2}
+
+root_state <- sapply(1:length(n_thresholds), function(trait) ifelse(n_thresholds[trait] %% 2 == 1, thresholds[trait,(median(1:n_thresholds[trait]))], 
+                                                      mean(c(thresholds[trait,(median(1:n_thresholds[trait]) - 0.5)], thresholds[trait,(median(1:n_thresholds[trait]) + 0.5)]))))
+
+#for use with a single threshold
+# if(n_thresholds %% 2 == 1){root_state <- thresholds[,(median(1:n_thresholds))]} else {root_state <- (thresholds[,(median(1:n_thresholds) - 0.5)] + thresholds[,(median(1:n_thresholds) + 0.5)]) / 2}
+
 traits <- mvSIM(tree, model="BM1", param=list(sigma=R, theta=root_state)) 
 
 #simulate thresholded traits at the population level
-traits_indiv <- lapply(1:dim(traits)[1], function(tip) rmvnorm(n = n_indiv, mean = traits[tip,], sigma = R)); names(traits_indiv) <- rownames(traits)
-traits_indiv_discr <- lapply(1:dim(traits)[1], function(tip) 
-  t(sapply(1:n_indiv, function(indiv) sapply(1:d_traits, function(trait) sum(traits_indiv[[tip]][indiv,trait] - thresholds[trait,] > 0))))); names(traits_indiv_discr) <- names(traits_indiv) 
+traits_indiv <- lapply(1:nTaxa, function(tip) rmvnorm(n = n_indiv[tip], mean = traits[tip,], sigma = R)); names(traits_indiv) <- rownames(traits)
+traits_indiv_discr <- lapply(1:nTaxa, function(tip) t(sapply(1:n_indiv[tip], function(indiv) sapply(1:d_traits, function(trait) sum(traits_indiv[[tip]][indiv,trait] - thresholds[trait,] > 0))))); 
+names(traits_indiv_discr) <- names(traits_indiv) 
 
 #identify unique site patterns
 traits_indiv_discr_unique <- lapply(1:dim(traits)[1], function(tip) uniqueSP(traits_indiv_discr[[tip]]))
@@ -716,13 +736,16 @@ dat2 = data.frame(nSP = unlist(lapply(1:nTaxa, function(tip) traits_indiv_discr_
 dat <- dat_orig <- cbind(dat, dat2)
 
 #bad init
-par <- c(rep(0, nTaxa * d_traits), 10, rep(0, choose(d_traits, 2)), c(sapply(0:(n_thresholds-1), function(x) rep(x, d_trait))))
+# par <- c(rep(0, nTaxa * d_traits), 10, rep(0, choose(d_traits, 2)), c(sapply(0:(n_thresholds-1), function(x) rep(x, d_trait))))
 
 #better init
-thresholds_init <- matrix(rep(0:(n_thresholds-1), d_traits), nrow = d_traits, ncol = n_thresholds,  byrow = T) / 2
-threshold_diffs_init <- t(sapply(1:d_traits, function(trait) diff(thresholds_init[trait,])))
+thresholds_init <- matrix(rep(0:(max_thresholds_count-1), d_traits), nrow = d_traits, ncol = max_thresholds_count,  byrow = T) / 2
+thresholds_init <- t(sapply(1:d_traits, function(trait) c(thresholds_init[tip,1:n_thresholds[trait]], rep(Inf, max_thresholds_count - n_thresholds[trait]))))
+threshold_diffs_init <- t(sapply(1:d_traits, function(trait) diff(thresholds_init[trait,]))); threshold_diffs_init[is.na(threshold_diffs_init)] <- Inf
 n_thresh <- sapply(1:length(thresholds_init[,1]), function(trait) length((thresholds_init[trait,])))
-locations <- cbind(rep(-0.5, d_traits), thresholds_init, rep(n_thresholds, d_traits * 0.5))
+locations <- cbind(rep(-0.5, d_traits), thresholds_init, rep(Inf, d_traits))
+infs_first_index <- sapply(1:d_traits, function(trait) which(locations[trait,] == Inf)[1])
+for(i in 1:d_traits){locations[i,infs_first_index] <- locations[i,infs_first_index-1] + 0.5}
 init_cor <- cor(do.call(rbind, lapply(1:nTaxa, function(x) (traits_indiv_discr[[x]]))))
 init_cor[is.na(init_cor)] <- 0
 
@@ -1209,9 +1232,10 @@ logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may h
 }
 
 thresh_trait_ind <- sample(1:d_traits, 1)
-par_to_opt_ind <- nTaxa*d_traits+2+choose(d_traits, 2) + 0:(n_thresholds-2) * d_traits + thresh_trait_ind - 1
+par_to_opt_ind <- nTaxa*d_traits+2+choose(d_traits, 2) + 0:(max_thresholds_count-2) * d_traits + thresh_trait_ind - 1
+par_to_opt_ind <- par_to_opt_ind[1:(n_thresholds[thresh_trait_ind]-1)]
 # par <- c(c(t(traits)), 10, R[upper.tri(R)], c(threshold_diffs_init)) #try using true par values to check for good behavior
-par_to_opt_ind <- 1337
+par_to_opt_ind <- 1
 par_to_opt <- par[par_to_opt_ind]
 type_of_param <- ifelse(par_to_opt_ind[1] <= nTaxa * d_traits, "m", 
                  ifelse(par_to_opt_ind[1] == (nTaxa * d_traits + 1), "v",
@@ -1227,11 +1251,12 @@ logLL_bivProb_optim_multithresh(0.95, dat)
 # sapply(1:1000/100, function(asdf) logLL_bivProb_optim_multithresh(asdf, dat))
 
 fast = T
+method <- "L-BFGS-B"
 if(!fast){
   t_s <- Sys.time()
   optim_out <- optim(par = par_to_opt, logLL_bivProb_optim_multithresh, dat = dat, method = method, control = list(trace = 0, REPORT = 10),
-                     upper = c(rep(Inf, nTaxa * d_traits + 1), rep(1, choose(d_traits, 2)), rep(Inf, (n_thresholds-1) * d_traits))[par_to_opt_ind], 
-                     lower = c(rep(-Inf, nTaxa * d_traits), 0, rep(-1, choose(d_traits, 2)), rep(0, (n_thresholds-1) * d_traits))[par_to_opt_ind])
+                     upper = c(rep(Inf, nTaxa * d_traits + 1), rep(1, choose(d_traits, 2)), rep(Inf, (max_thresholds_count-1) * d_traits))[par_to_opt_ind], 
+                     lower = c(rep(-Inf, nTaxa * d_traits), 0, rep(-1, choose(d_traits, 2)), rep(0, (max_thresholds_count-1) * d_traits))[par_to_opt_ind])
   Sys.time() - t_s
   optim_out$par
   threshold_diffs[,thresh_trait_ind]
@@ -1246,28 +1271,30 @@ for(i in 1:nrounds){
   cat(paste0("\n", "round ", i, ": "))
   param_ord <- as.list(sample(c(1:(nTaxa*d_traits+1+choose(d_traits, 2))))) #univ optim, double emphasis on correlation parameters and threshold diffs
   # param_ord <- as.list(sample(c(1:nparam))) #univ optim, double emphasis on correlation parameters and threshold diffs
-  thresh_trait_ind <- sample(1:d_traits)
-  par_to_opt_ind <- lapply(1:d_traits, function(trait) nTaxa*d_traits+2+choose(d_traits, 2) + 0:(n_thresholds-2) * d_traits + thresh_trait_ind[trait] - 1)
+  thresh_trait_ind <- sample(which(n_thresholds > 1))
+  par_to_opt_ind <- lapply(thresh_trait_ind, function(trait) (nTaxa*d_traits+2+choose(d_traits, 2) + 0:(max_thresholds_count-2) * d_traits + trait - 1)[0:(n_thresholds[trait]-1)])
   if(T){
     param_ord <- c(par_to_opt_ind, param_ord)
   } else {
     param_ord <- sample(c(par_to_opt_ind, param_ord))
   }
+  num_iters_passed <- 0
   if(ncore == 1){
     for(par_to_opt_ind in param_ord){
       type_of_param <- ifelse(par_to_opt_ind[1] <= nTaxa * d_traits, "m", 
                        ifelse(par_to_opt_ind[1] == (nTaxa * d_traits + 1), "v",
                        ifelse(par_to_opt_ind[1] > (nTaxa * d_traits + 1) & par_to_opt_ind[1] <= (nTaxa * d_traits + 1 + choose(d_traits, 2)), "c", 
                         "t")))
-      cat(paste0("round ", i, ", ", round(par_to_opt_ind / (length(param_ord) / ncore) * 100), "%: ", type_of_param, "-"))
+      cat(paste0("round ", i, ", ", round(num_iters_passed / (length(param_ord) / ncore) * 100), "%: ", type_of_param, "-"))
+      num_iters_passed = num_iters_passed + 1
       # cat(paste0(par_to_opt_ind, type_of_param, "-"))
       par_to_opt <- par[par_to_opt_ind]
       k_par <- par
       k_par[par_to_opt_ind] <- NA  
       dat <- list(dat_orig, k_par, prunes, rownames(traits), n_thresh)
       dat <- list(dat_orig, k_par, prunes_init, rownames(traits), n_thresh, getUniqueSitePatterns(par_to_opt, dat)) 
-      upper = c(rep(Inf, nTaxa * d_traits + 1), rep(0.99, choose(d_traits, 2)), rep(Inf, (n_thresholds-1) * d_traits))[par_to_opt_ind]
-      lower = c(rep(-Inf, nTaxa * d_traits), 0.01, rep(-0.99, choose(d_traits, 2)), rep(0, (n_thresholds-1) * d_traits))[par_to_opt_ind]
+      upper = c(rep(Inf, nTaxa * d_traits + 1), rep(0.99, choose(d_traits, 2)), rep(Inf, (max_thresholds_count-1) * d_traits))[par_to_opt_ind]
+      lower = c(rep(-Inf, nTaxa * d_traits), 0.01, rep(-0.99, choose(d_traits, 2)), rep(0, (max_thresholds_count-1) * d_traits))[par_to_opt_ind]
       optim_out <- optim(par = par_to_opt, logLL_bivProb_optim_multithresh, dat = dat, method = method, control = list(trace = 0, REPORT = 1),
                          upper = upper, lower = lower)
       cat(paste0("(", round(mean(abs(par[par_to_opt_ind] - optim_out$par)), 2), ")-"))
@@ -1290,9 +1317,9 @@ for(i in 1:nrounds){
           k_par[[core]][mc_par_to_opt_ind[[core]]] <- NA
         }
         dat <- lapply(1:ncore, function(core) list(dat_orig, k_par[[core]], prunes, rownames(traits), n_thresh))
-        upper = c(rep(Inf, nTaxa * d_traits + 1), rep(0.99, choose(d_traits, 2)), rep(Inf, (n_thresholds-1) * d_traits))
+        upper = c(rep(Inf, nTaxa * d_traits + 1), rep(0.99, choose(d_traits, 2)), rep(Inf, (max_thresholds_count-1) * d_traits))
         upper = lapply(1:ncore, function(core) upper[mc_par_to_opt_ind[[core]]])
-        lower = c(rep(-Inf, nTaxa * d_traits), 0.01, rep(-0.99, choose(d_traits, 2)), rep(0, (n_thresholds-1) * d_traits))
+        lower = c(rep(-Inf, nTaxa * d_traits), 0.01, rep(-0.99, choose(d_traits, 2)), rep(0, (max_thresholds_count-1) * d_traits))
         lower = lapply(1:ncore, function(core) lower[mc_par_to_opt_ind[[core]]])
         optim_out <- mclapply(1:ncore, function(core) optim(par = par_to_opt[[core]], logLL_bivProb_optim_multithresh, dat = dat[[core]],
                            method = method, control = list(trace = 0, REPORT = 1),
@@ -1322,8 +1349,8 @@ for(i in 1:nrounds){
         k_par <- par
         k_par[par_to_opt_ind] <- NA  
         dat <- list(dat_orig, k_par, prunes, rownames(traits), n_thresh)
-        upper = c(rep(Inf, nTaxa * d_traits + 1), rep(0.999, choose(d_traits, 2)), rep(Inf, (n_thresholds-1) * d_traits))[par_to_opt_ind]
-        lower = c(rep(-Inf, nTaxa * d_traits), 0.01, rep(-0.999, choose(d_traits, 2)), rep(0, (n_thresholds-1) * d_traits))[par_to_opt_ind]
+        upper = c(rep(Inf, nTaxa * d_traits + 1), rep(0.999, choose(d_traits, 2)), rep(Inf, (max_thresholds_count-1) * d_traits))[par_to_opt_ind]
+        lower = c(rep(-Inf, nTaxa * d_traits), 0.01, rep(-0.999, choose(d_traits, 2)), rep(0, (max_thresholds_count-1) * d_traits))[par_to_opt_ind]
         optim_out <- optim(par = par_to_opt, logLL_bivProb_optim_multithresh, dat = dat, method = method, control = list(trace = 0, REPORT = 1),
                            upper = upper, lower = lower)
         cat(paste0("(", round(mean(abs(par[par_to_opt_ind] - optim_out$par)), 2), ")-"))
@@ -1373,7 +1400,7 @@ paste0("regularizing variance = ", round(reg, 3))
 
 est_means <- matrix(optim_est[1:(nTaxa*d_traits)], ncol = d_traits, nrow = nTaxa, byrow = T)
 
-thresholds_est <- cbind(rep(0, d_traits), matrix(optim_est[(nTaxa*d_traits+2+choose(d_traits, 2)) : ((nTaxa*d_traits+1+choose(d_traits, 2)) + sum(d_traits*(n_thresholds-1)))], nrow = d_traits, ncol = n_thresholds[1]-1))
+thresholds_est <- cbind(rep(0, d_traits), matrix(optim_est[(nTaxa*d_traits+2+choose(d_traits, 2)) : ((nTaxa*d_traits+1+choose(d_traits, 2)) + sum(d_traits*(max_thresholds_count-1)))], nrow = d_traits, ncol = max_thresholds_count[1]-1))
 thresholds_est <- t(sapply(1:nrow(thresholds_est), function(trait) cumsum(thresholds_est[trait,])))
 
 par(mfrow = c(2,3))
@@ -1384,7 +1411,9 @@ plot.new()
 plot(est_means, traits, main = paste0("r = ", round(cor(c(traits), c(est_means)), 3))); abline(0,1)
 plot(R_est[upper.tri(R)], R[upper.tri(R)], xlim = c(-1,1), ylim = c(-1,1), xlab = "estimated correlations", ylab = "true correlations",
      main = paste0("r = ", round(cor(c(R[upper.tri(R)]), c(R_est[upper.tri(R)])), 3))); abline(0,1)
-plot(thresholds_est[,-1], thresholds[,-1], main = paste0("r = ", round(cor(c(thresholds[,-1]), c(thresholds_est[,-1])), 3))); abline(0,1)
+thresholds_est_vec <- as.vector(thresholds_est[,-1]); thresholds_est_vec <- thresholds_est_vec[thresholds_est_vec != Inf]
+thresholds_vec <- as.vector(thresholds[,-1]); thresholds_vec <- thresholds_vec[thresholds_vec != Inf]
+plot(thresholds_est_vec, thresholds_vec, main = paste0("r = ", round(cor(c(thresholds_vec), c(thresholds_est_vec)), 3))); abline(0,1)
 
 #use linear model but have it be on the lognormal scale
 
