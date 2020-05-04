@@ -1,17 +1,18 @@
 library(geiger)
 library(phytools)
 
-ntips <- 450
+ntips <- 100
 ntraits <- 1
-delta2 <- -1
-lambda <- 4
+delta2 <- 0
+lambda <- 3
 
 t <- 0:(100*treeHeight)/100
 r <- sapply(1:length(t), function(x) if(t[x] > burstLocation){1 + delta2*exp(-lambda*(t[x]-burstLocation))} else{1})
-plot(t,r,type = "l", ylim = c(0, 1+qexp(p = 0.99, rate = 1)), lwd = 3, col = "red")
+plot(t,r,type = "l", ylim = c(0, 1+qexp(p = 0.99, rate = 1)), lwd = 3, col = "red", ylab = "evolutionary rate", xlab = "time", cex.lab=1.25)
+# title(paste0("ntips = ", ntips, ", ntraits = ", ntraits, ", delta = ", delta2, ", base rate = ", baseRates[1,1], ", lambda = ", lambda))
 
 opacity <- 0.3
-nsamp <- 500
+nsamp <- 200
 
 disparities <- matrix(0, nrow = nsamp, ncol = ntips)
 times <- matrix(0, nrow = nsamp, ncol = ntips)
@@ -54,7 +55,7 @@ for(samp in 1:nsamp){
   dtt.nums <- dtt(phy = tree, data = traits, index = c("avg.sq", "avg.manhattan")[1], plot = F)
   if(samp == 1){
     plot(dtt.nums$times, dtt.nums$dtt, lwd = 2, col = rgb(0,0,0,opacity), xlim = c(0,1), ylim = c(0,1.25), 
-         type = "l", xlab = "time", ylab = "average subclade disparity", 
+         type = "l", xlab = "time", ylab = "average subclade disparity", cex.lab = 1.25,
          main = paste0("ntips = ", ntips, ", ntraits = ", ntraits, ", delta = ", delta2, ", base rate = ", baseRates[1,1], ", lambda = ", lambda))
     segments(x0 = burstLocation / treeHeight, x1 = burstLocation / treeHeight, y0 = 0.03, y1 = 1.25, lwd = 4, col = "red", lty = 2)
     text("BURST", x = burstLocation / treeHeight, y = 0, font = 2)
@@ -74,4 +75,4 @@ mean.disparity <- sapply(1:ntips, function(x) mean(disparities[,x]))
 mean.time <- sapply(1:ntips, function(x) mean(times[,x]))
 
 lines(mean.time, y = mean.disparity, lwd = 4, col = 3)
-legend(x = 0.85, y = 1.285, col = 3, lwd = 3, legend = "mean disparity")
+legend(x = 0.79, y = 1.285, col = 3, lwd = 3, legend = "mean disparity")

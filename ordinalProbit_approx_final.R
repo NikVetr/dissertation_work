@@ -13,6 +13,7 @@ library(TESS)
 library(mvMORPH)
 library(questionr)
 library(tictoc)
+library(gtools)
 
 maha <- function(x1, x2, vcvm, squared = FALSE){
   squaredDist <- t(x1-x2) %*% solve(vcvm) %*% (x1-x2)
@@ -527,10 +528,10 @@ logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may h
 }
 
 #first let's resimulate data
-nTaxa <- 50
-d_traits <- 150
-n_indiv <- sample(150:400, nTaxa, replace = T)
-n_thresholds <- sample(1:5, d_traits, T) #for variable numbers of thresholds, just need to buffer with 'Inf's on the right
+nTaxa <- 10
+d_traits <- 50
+n_indiv <- sample(30:100, nTaxa, replace = T)
+n_thresholds <- sample(2:6, d_traits, T) #for variable numbers of thresholds, just need to buffer with 'Inf's on the right
 weighPCV <- F
 
 tree <- tess.sim.taxa(n = 1, nTaxa = nTaxa, lambda = 1, mu = 0, max = 1E3)[[1]]
@@ -541,7 +542,8 @@ tree$edge.length <- tree$edge.length * target_tree_height / node.depth.edgelengt
 
 logn_mu <- 0.5
 logn_sd <- 0.25 #sum of the threshold spacings is lognormally distributed with underlying mean and sd
-threshold_spacings <- sapply(1:d_traits, function(trait) exp(rnorm(n = n_thresholds[trait]-1, mean = logn_mu, sd = logn_sd)) / (n_thresholds[trait]-1))
+# threshold_spacings <- sapply(1:d_traits, function(trait) exp(rnorm(n = n_thresholds[trait]-1, mean = logn_mu, sd = logn_sd)) / (n_thresholds[trait]-1))
+threshold_spacings <- sapply(1:d_traits, function(trait) as.vector(exp(rnorm(n = 1, mean = logn_mu, sd = logn_sd)) * rdirichlet(1, alpha = rep(1, (n_thresholds[trait]-1)))))
 threshold_spacings[n_thresholds == 1] <- Inf
 max_thresholds_count <- max(n_thresholds)
 threshold_spacings <- t(sapply(1:length(threshold_spacings), function(trait) c(threshold_spacings[[trait]], rep(Inf, max_thresholds_count - 1 - length(threshold_spacings[[trait]])))))
@@ -601,7 +603,7 @@ init_means <- t(sapply(1:nTaxa, function(tip)
 rownames(init_means) <- rownames(traits); colnames(init_means) <- colnames(traits)
 
 thresh_mu_init <- 1
-thresh_sd_init <- 10
+thresh_sd_init <- 100
 
 par <- c(c(t(init_means)), 10, init_cor[upper.tri(init_cor)], c(threshold_diffs_init), c(thresh_mu_init, thresh_sd_init))
 
@@ -667,7 +669,7 @@ for(i in 1:nrounds){
   }
   
   #add in the threshold regularizing terms at the end
-  param_ord <- (c(param_ord, list(((nTaxa*d_traits+1+choose(d_traits, 2)) + sum(n_thresh-1)) + c(1,2))))
+  # param_ord <- (c(param_ord, list(((nTaxa*d_traits+1+choose(d_traits, 2)) + sum(n_thresh-1)) + c(1,2))))
   
   num_iters_passed <- 0
   if(ncore == 1){
@@ -785,6 +787,7 @@ optim_est <- par
 
 R_est <- diag(d_traits)
 R_est[upper.tri(R_est)] <- optim_est[(nTaxa*d_traits+2) : (nTaxa * d_traits + 1 + choose(d_traits, 2))];
+R_est_raw <-R_est + t(R_est) - diag(d_traits)
 R_est <- as.matrix(nearPD(R_est + t(R_est) - diag(d_traits), corr = T)$mat)
 
 reg <- optim_est[nTaxa * d_traits + 1]
@@ -796,16 +799,33 @@ thresholds_est <- cbind(rep(0, d_traits), matrix(optim_est[(nTaxa*d_traits+2+cho
 thresholds_est <- t(sapply(1:nrow(thresholds_est), function(trait) cumsum(thresholds_est[trait,])))
 
 par(mfrow = c(2,3))
-plot(init_means, traits, main = paste0("r = ", round(cor(c(traits), c(init_means)), 3))); abline(0,1)
-plot(init_cor[upper.tri(R)], R[upper.tri(R)], xlim = c(-1,1), ylim = c(-1,1), xlab = "Pearson's 'r's", ylab = "true correlations",
-     main = paste0("r = ", round(cor(c(R[upper.tri(R)]), c(init_cor[upper.tri(R)])), 3))); abline(0,1)
-plot.new()
-plot(est_means, traits, main = paste0("r = ", round(cor(c(traits), c(est_means)), 3))); abline(0,1)
-plot(R_est[upper.tri(R)], R[upper.tri(R)], xlim = c(-1,1), ylim = c(-1,1), xlab = "estimated correlations", ylab = "true correlations",
-     main = paste0("r = ", round(cor(c(R[upper.tri(R)]), c(R_est[upper.tri(R)])), 3))); abline(0,1)
+label_size <- 1.5
+title_size <- 2
+plot(init_means, traits, main = paste0("r = ", round(cor(c(traits), c(init_means)), 3)), cex.main = title_size, cex.lab = label_size, xlab = "Initialized Means", ylab = "True Means"); abline(0,1)
+plot(init_cor[upper.tri(R)], R[upper.tri(R)], xlim = c(-1,1), ylim = c(-1,1), xlab = "Pearson's 'r's", ylab = "True Correlations",
+     main = paste0("r = ", round(cor(c(R[upper.tri(R)]), c(init_cor[upper.tri(R)])), 3)), cex.lab = label_size, cex.main = title_size); abline(0,1)
+# plot.new()
+
+# heatmap(R_est - R_est_raw, Rowv = NA, Colv = NA, col = viridisLite::plasma(100))
+diffs_R_nearPD <- R_est - R_est_raw
+row_i <- as.vector(matrix(1:nrow(R_est), nrow = nrow(R_est), ncol = ncol(R_est)))
+col_j <- as.vector(matrix(1:ncol(R_est), nrow = nrow(R_est), ncol = ncol(R_est), byrow = T))
+cols <- viridisLite::plasma(200)
+plot(x = 1:dim(R_est)[1], y = 1:dim(R_est)[2], col = "white", xlab = "", ylab = "", bty = "n", cex.lab = label_size, cex.main = title_size)
+points(x = row_i, y = col_j, col = cols[round(as.vector(diffs_R_nearPD) * 100 + 100)], cex = 1, pch = 15)
+plotrix::color.legend( xl = 1, xr = dim(R_est)[1], yb = dim(R_est)[2] * 1.02, yt = dim(R_est)[2] * 1.04 , legend = 1:3-2 , gradient="x", rect.col=cols)
+title("nearPD() Forcing")
+plot(est_means, traits, main = paste0("r = ", round(cor(c(traits), c(est_means)), 3)), 
+     cex.lab = label_size, xlab = "Estimated Means", ylab = "True Means", cex.main = title_size); abline(0,1)
+plot(R_est[upper.tri(R)], R[upper.tri(R)], xlim = c(-1,1), ylim = c(-1,1), xlab = "Estimated Correlations", ylab = "True Correlations",
+     main = paste0("r = ", round(cor(c(R[upper.tri(R)]), c(R_est[upper.tri(R)])), 3)), cex.lab = label_size, cex.main = title_size); abline(0,1)
+# plot(R_est[upper.tri(R)], R[upper.tri(R)], xlim = c(-1,1), ylim = c(-1,1), xlab = "estimated raw correlations", ylab = "true correlations",
+#      main = paste0("r = ", round(cor(c(R[upper.tri(R)]), c(R_est_raw[upper.tri(R)])), 3))); abline(0,1)
+
 thresholds_est_vec <- as.vector(thresholds_est[,-1]); thresholds_est_vec <- thresholds_est_vec[thresholds_est_vec != Inf]
 thresholds_vec <- as.vector(thresholds[,-1]); thresholds_vec <- thresholds_vec[thresholds_vec != Inf]
-plot(thresholds_est_vec, thresholds_vec, main = paste0("r = ", round(cor(c(thresholds_vec), c(thresholds_est_vec)), 3))); abline(0,1)
+plot(thresholds_est_vec, thresholds_vec, main = paste0("r = ", round(cor(c(thresholds_vec), c(thresholds_est_vec)), 3)), 
+     cex.lab = label_size, xlab = "Estimated Thresholds", ylab = "True Thresholds", cex.main = title_size); abline(0,1)
 
 #use linear model but have it be on the lognormal scale
 
@@ -814,8 +834,8 @@ hist((abs(est_means - traits)))
 deviants <- as.matrix(table(as.data.frame(which((abs(est_means - traits)) > 1, arr.ind = T))))
 deviants
 apply(deviants, 2, sum)
-plot(tree)
-plot(upgmaTree)
+plot(cophylo(tree, upgmaTree))
+
 
 invariants <- as.matrix(table(as.data.frame(which(t(sapply(1:nTaxa, function(tip) apply(traits_indiv_discr_unique[[tip]]$SPs, 2, var) == 0)), arr.ind = T))))
 invariants

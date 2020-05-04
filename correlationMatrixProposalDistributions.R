@@ -898,9 +898,8 @@ choleskalator <- function(mat, ind){
     return(cbind(rbind(ind_removed, rep(0,dim-1)), URn_target_sle))
   }
 }
-
-
 blooming_onion_tune_chol <- function (upper_cholesky_factor, ind, varN = 0.1, betaWindow = NA) {
+  redrawBeta <- ifelse(!is.na(betaWindow), T, F)
   d <- dim(upper_cholesky_factor)[1]
   m <- d-1
   R <- matrix(0, d, d)
@@ -955,14 +954,14 @@ blooming_onion_tune_chol <- function (upper_cholesky_factor, ind, varN = 0.1, be
   return(list(sample = R, log_prop_ratio = log_prop_ratio))
 }
 
-dim <- 500
+dim <- 10
 cormat <- rlkj(dim)
 cholfac <- chol(cormat)
 microbenchmark(blooming_onion_tune_chol(upper_cholesky_factor = cholfac, ind = sample(1:dim, 1), varN = 0.1, betaWindow = 0.1), 
                blooming_onion_tune_clean(cor = cormat, varN = 0.1, betaWindow = 0.1))
 
 
-dim <- 5
+dim <- 10
 target_corr <- rlkj(dim)
 true_corrs <- target_corr[upper.tri(target_corr)]
 n_obs <- 40
@@ -974,7 +973,7 @@ emp_corrs <- cor(obs)[upper.tri(diag(dim))]
 par(mfrow = c(ifelse(dim < 5, choose(dim, 2), 4), 2))
 
 corr_init <- chol(rlkj(dim))
-n_iter <- 1E6
+n_iter <- 2.5E6
 thin <- 1E2
 n_out <- round(n_iter/thin)
 

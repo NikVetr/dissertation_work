@@ -109,7 +109,9 @@ for(k in 1:nhists){
 
 
 #in two circles, connected by a rectangle
-nhists <- 1e2
+nhists <- 50
+landcolor <- "antiquewhite"
+watercolor <- "lightblue"
 for(k in 1:nhists){
   print(k)
   
@@ -144,7 +146,7 @@ for(k in 1:nhists){
   BL <- 40
   
   #specify the number of intermediate timepoints over which to sample history
-  n_IntermediateTimePoints <- 2^9-1
+  n_IntermediateTimePoints <- 2^11-1
   
   #initialize matrix that will contain the bivariate history 
   positions <- matrix(0, ncol = 2, nrow = n_IntermediateTimePoints + 2)
@@ -204,22 +206,32 @@ for(k in 1:nhists){
   #draw circle
   if(k==1){
     plot(x = circle1Center[1], y = circle1Center[2], pch = 3, xlim = c(circle1Center[1]-circle1Radius, circle2Center[1]+circle2Radius), 
-         ylim = c(circle1Center[2]-circle1Radius, circle1Center[2]+circle1Radius), xlab = "", ylab = "")
+         ylim = c(circle1Center[2]-circle1Radius, circle1Center[2]+circle1Radius), xlab = "", ylab = "", xaxt = "n", yaxt = "n")
+    rect(xleft = 1.1*c(circle1Center[1]-circle1Radius), xright =1.1*(circle2Center[1]+circle2Radius), 
+         ybottom = 1.1*c(circle1Center[2]-circle1Radius), ytop =1.1*(circle1Center[2]+circle1Radius), col = watercolor, lwd = 1)
     points(x = circle2Center[1], y = circle2Center[2], pch = 3)
+    points(x = circle1Center[1], y = circle1Center[2], pch = 3)
     
     #circle1
     circ1X <- (-100:100/100*circle1Radius)
     circ1Y <- sqrt(circle1Radius^2 - circ1X^2)
     lines(circ1X + circle1Center[1], circ1Y + circle1Center[2], lwd = 2); lines(circ1X + circle1Center[1], -circ1Y + circle1Center[2], lwd = 2)
+    plotrix::draw.circle(x = circle1Center[1], circle1Center[2], radius = circle1Radius, col = landcolor)
     
     #circle2
     circ1X <- (-100:100/100*circle2Radius)
     circ1Y <- sqrt(circle2Radius^2 - circ1X^2)
     lines(circ1X + circle2Center[1], circ1Y + circle2Center[2], lwd = 2); lines(circ1X + circle2Center[1], -circ1Y + circle2Center[2], lwd = 2)
+    plotrix::draw.circle(x = circle2Center[1], circle2Center[2], radius = circle2Radius, col = landcolor)
+    
+    #circlecenters
+    points(x = circle2Center[1], y = circle2Center[2], pch = 3)
+    points(x = circle1Center[1], y = circle1Center[2], pch = 3)
+    
     
     #rectangle
-    rect(xleft = rectangleCorners[1,1], ybottom = rectangleCorners[1,2], xright = rectangleCorners[2,1], ytop = rectangleCorners[2,2], lwd = 2)
-    rect(border = NA, col = "white", xleft = rectangleCorners[1,1]-0.1, ybottom = rectangleCorners[1,2]+0.1, xright = rectangleCorners[2,1]+0.1, ytop = rectangleCorners[2,2]-0.1, lwd = 2)
+    rect(xleft = rectangleCorners[1,1], ybottom = rectangleCorners[1,2], xright = rectangleCorners[2,1], ytop = rectangleCorners[2,2], lwd = 2, col = landcolor)
+    rect(border = NA, col = landcolor, xleft = rectangleCorners[1,1]-0.1, ybottom = rectangleCorners[1,2]+0.1, xright = rectangleCorners[2,1]+0.1, ytop = rectangleCorners[2,2]-0.1, lwd = 2)
   }
   
   #draw sampled path
