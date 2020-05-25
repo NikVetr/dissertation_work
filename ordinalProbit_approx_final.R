@@ -253,9 +253,13 @@ logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may h
   means <- matrix(par[1:(nTaxa*d_trait)], ncol = d_trait, nrow = nTaxa, byrow = T)
   rownames(means) <- tipNames
   threshold_mat <- cbind(rep(0, d_trait), matrix(par[(nTaxa*d_trait+2+choose(d_trait, 2)) : ((nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1))], nrow = d_trait, ncol = n_thresh[1]-1))
-  thresh_reg_mu <- par[(nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1) + 1]
-  thresh_reg_sd <- par[(nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1) + 2]
   
+  #for lognormal regularization
+  # thresh_reg_mu <- par[(nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1) + 1]
+  # thresh_reg_sd <- par[(nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1) + 2]
+  
+  #for exponential regularization
+  lambda <- par[(nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1) + 1]
   
   if(length(par_to_opt_ind) == "1"){
     if(par_to_opt_ind > 0 & par_to_opt_ind <= (nTaxa * d_trait)){
@@ -439,7 +443,6 @@ logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may h
       
     }
     
-    #FIX REDUNDANT UNIQUESP_REDUX
     regTerm <- 0
     
   } else if(par_type == "thresh"){
@@ -509,17 +512,28 @@ logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may h
           stop("something has gone terribly wrong")
       } else {
         sum_of_spacings <- sum(diff(threshold_mat[thresh_trait,][threshold_mat[thresh_trait,] != Inf]))
+        regTerm <- -sum(dexp(diff(threshold_mat[thresh_trait,][threshold_mat[thresh_trait,] != Inf]), lambda, TRUE))
       } 
     } else {
       sum_of_spacings <- sum(par_to_opt)
+      regTerm <- -sum(dexp(par_to_opt, lambda, TRUE))
+      
     }
-    regTerm <- -dnorm(x = log(sum_of_spacings), mean = thresh_reg_mu, sd = thresh_reg_sd, log = T)
+    # regTerm <- -dnorm(x = log(sum_of_spacings), mean = thresh_reg_mu, sd = thresh_reg_sd, log = T) #lognormal regularization
   
   } else if(par_type == "thresh_reg"){
     logLL <- 0
-    thresh_sums_of_spacings <- sapply(1:d_trait, function(trait) sum(diff(threshold_mat[trait,][threshold_mat[trait,] != Inf])))
-    thresh_sums_of_spacings <- thresh_sums_of_spacings[thresh_sums_of_spacings > 1E-6]
-    regTerm <- -sum(dnorm(x = log(thresh_sums_of_spacings), mean = thresh_reg_mu, sd = thresh_reg_sd, log = T))
+    threshold_mat
+    thresh_spacings <- unlist(lapply(1:d_trait, function(trait) diff(threshold_mat[trait,][threshold_mat[trait,] != Inf])))
+    thresh_spacings <- thresh_spacings[thresh_spacings > 1E-6]
+    regTerm <- -sum(dexp(thresh_spacings, lambda, TRUE))
+    
+    
+    #lognormal regularization
+    # thresh_sums_of_spacings <- sapply(1:d_trait, function(trait) sum(diff(threshold_mat[trait,][threshold_mat[trait,] != Inf])))
+    # thresh_sums_of_spacings <- thresh_sums_of_spacings[thresh_sums_of_spacings > 1E-6]
+    # regTerm <- -sum(dnorm(x = log(thresh_sums_of_spacings), mean = thresh_reg_mu, sd = thresh_reg_sd, log = T))
+    
   }
   
   returnVal <- logLL + regTerm
@@ -528,9 +542,9 @@ logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may h
 }
 
 #first let's resimulate data
-nTaxa <- 10
-d_traits <- 50
-n_indiv <- sample(30:100, nTaxa, replace = T)
+nTaxa <- 11
+d_traits <- 115
+n_indiv <- sample(15:50, nTaxa, replace = T)
 n_thresholds <- sample(2:6, d_traits, T) #for variable numbers of thresholds, just need to buffer with 'Inf's on the right
 weighPCV <- F
 
@@ -539,11 +553,16 @@ target_tree_height <- 2
 tree$edge.length <- tree$edge.length * target_tree_height / node.depth.edgelength(tree)[1]
 
 #sample thresholds from scaled lognormal distribution
+# logn_mu <- 0.5
+# logn_sd <- 0.25 #sum of the threshold spacings is lognormally distributed with underlying mean and sd
+# # threshold_spacings <- sapply(1:d_traits, function(trait) exp(rnorm(n = n_thresholds[trait]-1, mean = logn_mu, sd = logn_sd)) / (n_thresholds[trait]-1))
+# threshold_spacings <- sapply(1:d_traits, function(trait) as.vector(exp(rnorm(n = 1, mean = logn_mu, sd = logn_sd)) * rdirichlet(1, alpha = rep(1, (n_thresholds[trait]-1)))))
 
-logn_mu <- 0.5
-logn_sd <- 0.25 #sum of the threshold spacings is lognormally distributed with underlying mean and sd
-# threshold_spacings <- sapply(1:d_traits, function(trait) exp(rnorm(n = n_thresholds[trait]-1, mean = logn_mu, sd = logn_sd)) / (n_thresholds[trait]-1))
-threshold_spacings <- sapply(1:d_traits, function(trait) as.vector(exp(rnorm(n = 1, mean = logn_mu, sd = logn_sd)) * rdirichlet(1, alpha = rep(1, (n_thresholds[trait]-1)))))
+#sample threshold intervals from iid exponential distributions
+lambda <- 2
+threshold_spacings <- lapply(1:d_traits, function(trait) rexp(n = (n_thresholds[trait]-1), rate = lambda))
+
+
 threshold_spacings[n_thresholds == 1] <- Inf
 max_thresholds_count <- max(n_thresholds)
 threshold_spacings <- t(sapply(1:length(threshold_spacings), function(trait) c(threshold_spacings[[trait]], rep(Inf, max_thresholds_count - 1 - length(threshold_spacings[[trait]])))))
@@ -582,7 +601,7 @@ dat <- dat_orig <- cbind(dat, dat2)
 
 #better init
 thresholds_init <- matrix(rep(0:(max_thresholds_count-1), d_traits), nrow = d_traits, ncol = max_thresholds_count,  byrow = T) / 2
-thresholds_init <- t(sapply(1:d_traits, function(trait) c(thresholds_init[tip,1:n_thresholds[trait]], rep(Inf, max_thresholds_count - n_thresholds[trait]))))
+thresholds_init <- t(sapply(1:d_traits, function(trait) c(thresholds_init[trait,1:n_thresholds[trait]], rep(Inf, max_thresholds_count - n_thresholds[trait]))))
 threshold_diffs_init <- t(sapply(1:d_traits, function(trait) diff(thresholds_init[trait,]))); threshold_diffs_init[is.na(threshold_diffs_init)] <- Inf
 n_thresh <- sapply(1:length(thresholds_init[,1]), function(trait) length((thresholds_init[trait,])))
 locations <- cbind(rep(-0.5, d_traits), thresholds_init, rep(Inf, d_traits))
@@ -602,10 +621,11 @@ init_means <- t(sapply(1:nTaxa, function(tip)
 
 rownames(init_means) <- rownames(traits); colnames(init_means) <- colnames(traits)
 
-thresh_mu_init <- 1
-thresh_sd_init <- 100
+# thresh_mu_init <- 1
+# thresh_sd_init <- 100
+lambda_init <- 0.01
 
-par <- c(c(t(init_means)), 10, init_cor[upper.tri(init_cor)], c(threshold_diffs_init), c(thresh_mu_init, thresh_sd_init))
+par <- c(c(t(init_means)), 10, init_cor[upper.tri(init_cor)], c(threshold_diffs_init), lambda_init)
 
 #get mahalonibis distance matrix
 mahDistMat_init <- mahaMatrix(init_means, init_cor, squared = F)
@@ -669,7 +689,7 @@ for(i in 1:nrounds){
   }
   
   #add in the threshold regularizing terms at the end
-  # param_ord <- (c(param_ord, list(((nTaxa*d_traits+1+choose(d_traits, 2)) + sum(n_thresh-1)) + c(1,2))))
+  param_ord <- (c(param_ord, list(((nTaxa*d_traits+1+choose(d_traits, 2)) + sum(n_thresh-1)) + 1)))
   
   num_iters_passed <- 0
   if(ncore == 1){
@@ -849,5 +869,6 @@ deviants <- deviants[order(as.numeric(rownames(deviants))),]
 invariants - deviants
 sum(invariants)
 
-print(paste0("est_thresh_reg_mu = ", round(par[((nTaxa*d_traits+1+choose(d_traits, 2)) + sum(n_thresh-1)) + 1], 3), ", real mu = ", logn_mu))
-print(paste0("est_thresh_reg_sd = ", round(par[((nTaxa*d_traits+1+choose(d_traits, 2)) + sum(n_thresh-1)) + 2], 3), ", real sd = ", logn_sd))
+# print(paste0("est_thresh_reg_mu = ", round(par[((nTaxa*d_traits+1+choose(d_traits, 2)) + sum(n_thresh-1)) + 1], 3), ", real mu = ", logn_mu))
+# print(paste0("est_thresh_reg_sd = ", round(par[((nTaxa*d_traits+1+choose(d_traits, 2)) + sum(n_thresh-1)) + 2], 3), ", real sd = ", logn_sd))
+print(paste0("est_thresh_lambda = ", round(par[((nTaxa*d_traits+1+choose(d_traits, 2)) + sum(n_thresh-1)) + 1], 3), ", real lambda = ", lambda))
