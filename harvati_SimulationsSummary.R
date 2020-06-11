@@ -10,11 +10,13 @@ library(MCMCpack)
 library(mvMORPH)
 library(phytools)
 
+traitNumIter <- (15*(2^(0:4)))*3+1
+# traitNumIter <- c(46)
+nreps <- 100
 
-traitNumIter <- c(46)
-nreps <- 500
-
-rfDists <- matrix(0, nreps, 4); colnames(rfDists) <- c("mcc", "upgma", "nj", "pars", "pars-pca")
+rfDists <- matrix(0, nreps, 7); 
+colnames(rfDists) <- c("mcc", "upgma", "nj", "pars", "pars-pca", "mk-mvc", "mk-mvc-pca")
+rfDists <- lapply(1:length(traitNumIter), function(x) rfDists)
 
 for (j in 1:length(traitNumIter)) { #iterates over trait number
   
@@ -38,19 +40,30 @@ for (j in 1:length(traitNumIter)) { #iterates over trait number
     parsTree <- read.tree(file = paste0("output_parsimony/", fileName, "_divergenceCodingParsimony.txt"))
     parsTree_pca <- read.tree(file = paste0("output_parsimony_PCA/", fileName, "_divergenceCodingParsimony.txt"))
     
-    rfDists[i,1] <- RF.dist(trueTree, mccTree)
-    rfDists[i,2] <- RF.dist(trueTree, upgmaTree)
-    rfDists[i,3] <- RF.dist(trueTree, njTree)
+    mktrees1 <- read.tree(paste0("output_discrete/", fileName, "_MVC_raw_trees_run_1.trees") )
+    mktrees2 <- read.tree(paste0("output_discrete/", fileName, "_MVC_raw_trees_run_2.trees") )
+    mktrees <- c(mktrees1, mktrees2)
+    mccTree_mkRAW <- maxCladeCred(mktrees)
+    mkPCAtrees1 <- read.tree(paste0("output_discrete/", fileName, "_MVC_PCs_trees_run_1.trees") )
+    mkPCAtrees2 <- read.tree(paste0("output_discrete/", fileName, "_MVC_PCs_trees_run_2.trees") )
+    mkPCAtrees <- c(mkPCAtrees1, mkPCAtrees2)
+    mccTree_mkPCA <- maxCladeCred(mkPCAtrees)
+    
+    rfDists[[j]][i,1] <- RF.dist(trueTree, mccTree)
+    rfDists[[j]][i,2] <- RF.dist(trueTree, upgmaTree)
+    rfDists[[j]][i,3] <- RF.dist(trueTree, njTree)
     if(class(parsTree) == "multiPhylo"){
-      rfDists[i,4] <- mean(sapply(1:length(parsTree), function(x) RF.dist(trueTree, parsTree[[x]])))
+      rfDists[[j]][i,4] <- mean(sapply(1:length(parsTree), function(x) RF.dist(trueTree, parsTree[[x]])))
     } else if(class(parsTree) == "phylo"){
-      rfDists[i,4] <- RF.dist(trueTree, parsTree)
+      rfDists[[j]][i,4] <- RF.dist(trueTree, parsTree)
     }    
     if(class(parsTree_pca) == "multiPhylo"){
-      rfDists[i,5] <- mean(sapply(1:length(parsTree_pca), function(x) RF.dist(trueTree, parsTree_pca[[x]])))
+      rfDists[[j]][i,5] <- mean(sapply(1:length(parsTree_pca), function(x) RF.dist(trueTree, parsTree_pca[[x]])))
     } else if(class(parsTree_pca) == "phylo"){
-      rfDists[i,5] <- RF.dist(trueTree, parsTree_pca)
+      rfDists[[j]][i,5] <- RF.dist(trueTree, parsTree_pca)
     }
+    rfDists[[j]][i,6] <- RF.dist(trueTree, mccTree_mkRAW)
+    rfDists[[j]][i,7] <- RF.dist(trueTree, mccTree_mkPCA)
   }
 }
 

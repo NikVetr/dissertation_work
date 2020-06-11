@@ -1,10 +1,13 @@
 library(geomorph)
+library(Matrix)
+library(phytools)
+library(phangorn)
 
 normalize <- T
-noPCA <- F
+noPCA <- T
 PCA_covBG <- F
 collapseHomo <- F
-collapseSubsp <- T
+collapseSubsp <- F
 
 data <- readland.nts("/Users/nikolai/data/allPD4.nts")
 class(data)
@@ -39,9 +42,12 @@ codes_linnaen[startsWith(codes_linnaen[,1], "HMS") & is.na(codes_linnaen[,4]),4]
 if(collapseHomo){
   codes_linnaen[startsWith(codes_linnaen[,1], "HMS"), 4] <- "Homo sapiens"
 }
+subsp <- unique(codes_linnaen[,4])
 if(collapseSubsp){
   codes_linnaen[,4] <- sapply(1:length(codes_linnaen[,4]), function(x) paste(strsplit(codes_linnaen[,4], " ")[[x]][1:2], collapse = " "))
 }
+species <- unique(codes_linnaen[,4])
+
 #what is the 5th letter? subspecies? probably not, since TT is troglodytes troglodytes
 # coded_genus <- substr(codes, 1, 2)
 # genus_key <- cbind(c("HM", "MC", "MN", "PP", "PN", "GO"), c("Homo", "Macaca", "Mandrillus", "Papio", "Pan", "Gorilla"))
@@ -51,6 +57,7 @@ if(collapseSubsp){
 # species <- sapply(1:length(linnaen), function(x) strsplit(linnaen[x], split = " ")[[1]][2])
 # subspecies <- sapply(1:length(linnaen), function(x) strsplit(linnaen[x], split = " ")[[1]][3])
 
+#load in the molecular tree
 
 #mean center all landmarks
 for(i in 1:15){for(j in 1:3){data[i,j,] <- data[i,j,] - mean(data[i,j,])}}
@@ -169,6 +176,7 @@ for (i in 1:ntraits){
     cov[i,j] <- covariance
   }
 }
+if(noPCA){cov <- nearPD(cov)$mat}
 
 #compute matrix of population means
 traitsHARVATI <- matrix(nrow=npop, ncol=ntraits)
@@ -212,14 +220,20 @@ ratesTSV <- function (rateMatrix, outputFilePath) {
   sink()
 }
 
-if(PCA_covBG){
-  meansNexus(traitsHARVATI, paste0("/Users/nikolai/data/Harvati_", ifelse(normalize, "normalized_", ""), ifelse(collapseHomo, "collapseHomo_", ""), ifelse(collapseSubsp, "collapseSubsp_", ""), "bgCovPCA.nex"))
-  ratesTSV(cov, paste0("/Users/nikolai/data/Harvati_", ifelse(normalize, "normalized_", ""), ifelse(collapseHomo, "collapseHomo_", ""), ifelse(collapseSubsp, "collapseSubsp_", ""), "_bgCovPCAbgRM.tsv"))
-  ratesTSV(cov2cor(cov), paste0("/Users/nikolai/data/Harvati_", ifelse(normalize, "normalized_", ""), ifelse(collapseHomo, "collapseHomo_", ""), ifelse(collapseSubsp, "collapseSubsp_", ""), "_bgCovPCAbgRM_corr.tsv"))
+if(!noPCA){
+  if(PCA_covBG){
+    meansNexus(traitsHARVATI, paste0("/Users/nikolai/data/Harvati_", ifelse(normalize, "normalized_", ""), ifelse(collapseHomo, "collapseHomo_", ""), ifelse(collapseSubsp, "collapseSubsp_", ""), "bgCovPCA.nex"))
+    ratesTSV(cov, paste0("/Users/nikolai/data/Harvati_", ifelse(normalize, "normalized_", ""), ifelse(collapseHomo, "collapseHomo_", ""), ifelse(collapseSubsp, "collapseSubsp_", ""), "_bgCovPCAbgRM.tsv"))
+    ratesTSV(cov2cor(cov), paste0("/Users/nikolai/data/Harvati_", ifelse(normalize, "normalized_", ""), ifelse(collapseHomo, "collapseHomo_", ""), ifelse(collapseSubsp, "collapseSubsp_", ""), "_bgCovPCAbgRM_corr.tsv"))
+  } else {
+    meansNexus(traitsHARVATI, paste0("/Users/nikolai/data/Harvati_", ifelse(normalize, "normalized_", ""), ifelse(collapseHomo, "collapseHomo_", ""), ifelse(collapseSubsp, "collapseSubsp_", ""), "totalCovPCA.nex"))
+    ratesTSV(cov, paste0("/Users/nikolai/data/Harvati_", ifelse(normalize, "normalized_", ""), ifelse(collapseHomo, "collapseHomo_", ""), ifelse(collapseSubsp, "collapseSubsp_", ""), "totalCovPCAbgRM.tsv"))
+    ratesTSV(cov2cor(cov), paste0("/Users/nikolai/data/Harvati_", ifelse(normalize, "normalized_", ""), ifelse(collapseHomo, "collapseHomo_", ""), ifelse(collapseSubsp, "collapseSubsp_", ""), "totalCovPCAbgRM_corr.tsv"))
+  }
 } else {
-  meansNexus(traitsHARVATI, paste0("/Users/nikolai/data/Harvati_", ifelse(normalize, "normalized_", ""), ifelse(collapseHomo, "collapseHomo_", ""), ifelse(collapseSubsp, "collapseSubsp_", ""), "totalCovPCA.nex"))
-  ratesTSV(cov, paste0("/Users/nikolai/data/Harvati_", ifelse(normalize, "normalized_", ""), ifelse(collapseHomo, "collapseHomo_", ""), ifelse(collapseSubsp, "collapseSubsp_", ""), "totalCovPCAbgRM.tsv"))
-  ratesTSV(cov2cor(cov), paste0("/Users/nikolai/data/Harvati_", ifelse(normalize, "normalized_", ""), ifelse(collapseHomo, "collapseHomo_", ""), ifelse(collapseSubsp, "collapseSubsp_", ""), "totalCovPCAbgRM_corr.tsv"))
+  meansNexus(traitsHARVATI, paste0("/Users/nikolai/data/Harvati_noPCA", ifelse(collapseHomo, "_homocollapse", "_homopops"), ".nex"))
+  ratesTSV(cov, paste0("/Users/nikolai/data/Harvati_noPCA", ifelse(collapseHomo, "_homocollapse", "_homopops"), ".tsv"))
+  ratesTSV(cov2cor(cov), paste0("/Users/nikolai/data/Harvati_noPCA_corr", ifelse(collapseHomo, "_homocollapse", "_homopops"), ".tsv"))
 }
 
 library(ape)
@@ -242,19 +256,31 @@ if(originalTest){
   trees2 <- read.tree("output/testHarvati_2.trees")
 }
 if(collapseHomo){
-  trees1 <- read.tree("output/totalCovPCA_fixRM_normalized_collapseHomo_c2.trees")
+  trees1 <- read.tree("/Users/nikolai/output/totalCovPCA_fixRM_normalized_collapseHomo_c2.trees")
   trees <- trees1
 }
 if(collapseSubsp){
   trees1 <- read.tree("output/totalCovPCA_fixRM_normalized_collapseSubsp_c2.trees")
   trees <- trees1
 }
+if(noPCA){
+  trees1 <- read.tree("output/harvati_noPCA_c1.trees")
+  trees2 <- read.tree("output/harvati_noPCA_c2.trees")
+  njTree <- read.tree(file = paste0("output/empirical_neighborJoining.txt"))
+  upgmaTree <- read.tree(file = paste0("output/empirical_upgma.txt"))
+  mp_tree <- read.tree(file = "maximumParsimonyTree_empirical.txt")
+  mp_tree_PCA <- read.tree(file = "maximumParsimonyTree_empirical_PCA.txt")
+}
 trees <- c(trees1, trees2)
 
-tree <- consensus(trees, p = 0.5)
 tree <- maxCladeCred(trees)
+tree <- consensus(trees, p = 0.5)
 startsWith2 <- function(x, pre){apply(sapply(1:length(pre), function(n) startsWith(x, pre[n])), 1, any)}
 tree <- root(tree, outgroup = tree$tip.label[startsWith2(tree$tip.label, c("Mac", "Pap", "Man"))], resolve.root = T, edgelabel = T)
+njTree <- root(njTree, outgroup = njTree$tip.label[startsWith2(njTree$tip.label, c("Mac", "Pap", "Man"))], resolve.root = T, edgelabel = T)
+mp_tree <- root(mp_tree, outgroup = mp_tree$tip.label[startsWith2(mp_tree$tip.label, c("Hom", "Pan", "Gor"))], resolve.root = T, edgelabel = T)
+mp_tree_PCA <- root(mp_tree_PCA, outgroup = mp_tree_PCA$tip.label[startsWith2(mp_tree_PCA$tip.label, c("Mac", "Pap", "Man"))], resolve.root = T, edgelabel = T)
+
 pp <- prop.clades(tree, trees, rooted = F)/length(trees)
 
 par(mfrow = c(1,1))
@@ -263,8 +289,17 @@ par(mfrow = c(1,1))
 plot(tree)
 edgelabels(round(pp, 2), sapply(1:tree$Nnode + length(tree$tip.label), 
                                 match, tree$edge[, 2]), bg = 1, frame = "none", adj = c(0,1.5))
-tree_norm <- tree
-plot(cophylo(tree, tree_norm))
+plot(upgmaTree); title("upgma tree")
+plot(njTree); title("neighbor joining tree")
+dev.off()
+par(mfrow = c(1,2))
+plot(mp_tree); title("maximum parsimony tree")
+plot(mp_tree_PCA); title("maximum parsimony tree with PCA transform")
+
+plot(cophylo(mp_tree, mp_tree_PCA)); title("\nmax-pars tree                                                                                                                                                                                                 max-pars tree w/ pca")
+
+# tree_norm <- tree
+# plot(cophylo(tree, tree_norm))
 
 
 convNum2Str <- function(nums, key){
