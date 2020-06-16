@@ -1,0 +1,100 @@
+     if (i == nStates) {Q_temp[i][i-1] = 1.0}
+ }
+"abs" + 1
+class("abs" + 1)
+type("abs" + 1)
+q()
+Q_temp
+Q_temp[1]
+Q_temp2
+Q_temp3
+Q_temp2
+source("orderedFreekScripts/orderedFreek" + nStates + ".Rev")4
+source("orderedFreekScripts/orderedFreek" + 4 + ".Rev")
+Q_temp4
+nStates
+nStates = 4
+source("orderedFreekScripts/orderedFreek" + 4 + ".Rev")
+Q_temp
+Q_temp4
+q()
+Q
+Q[1
+]
+Q[2]
+q()
+morpho
+morpho[1
+]
+morpho[1]
+morpho
+morpho_dist
+for(i in 1:morpho.size()){
+morpho_dist[i] ~ dnPhyloCTMC(tree=phylogeny, siteRates=rates_morpho, Q=Q[i], type=morpho.chartype())
+morpho_dist[i].clamp(morpho[i])
+morpho_dist[i].lnProbability()
+}
+morpho.size()
+i
+morpho_dist[i] ~ dnPhyloCTMC(tree=phylogeny, siteRates=rates_morpho, Q=Q[i], type=morpho.chartype())
+morpho
+morpho[i].charType
+()
+morpho[i].chartype()
+q()
+transform
+for(i in 1:dataFileName.size()){morpho[i] <- readCharacterDataDelimited("data_discrete/" + dataFileName[i], stateLabels=ncats[i], type="NaturalNumbers", delimiter="\\t", headers=FALSE)}
+ncats
+dataFileName[1]
+dataFileName
+dataFileName[1]
+q()
+i
+morpho
+ncats
+ncats[8]
+morpho[i] <- readCharacterDataDelimited("data_discrete/" + dataFileName[i], stateLabels=ncats[i], type="NaturalNumbers", delimiter="\\t", headers=FALSE)
+dataFileName[i]
+q()
+Q
+Q[1]
+Q[2]
+Q[3]
+Q[4]
+Q[5]
+morpho[1]
+morpho[2]
+morpho[3]
+morpho[4]
+morpho[5]
+q()
+Q
+q()
+?fnFreeK
+q()
+monitors
+monitors[1]
+monitors[1].methods()
+jenks_exp_cats
+q()
+ntraits
+sum(ntraits)
+nStates = 2
+for (i in 1:nStates) {
+   Q_temp2[i] = rep(0,nStates)
+     if (i != 1 & i != nStates) {Q_temp2[i][i-1] = 1.0; Q_temp2[i][i+1] = 1.0} 
+     if (i == 1) {Q_temp2[i][i+1] = 1.0}
+     if (i == nStates) {Q_temp2[i][i-1] = 1.0}
+ }
+Q_temp2
+Q[dats] := fnFreeK(Q_temp2, rescaled = TRUE, v("scalingAndSquaring","scalingAndSquaringPade","scalingAndSquaringTaylor","uniformization","eigen")[5])
+Q[dats]
+rb /Volumes/1TB/Harvati/scripts_discrete/simulations_46traits_replicate_96_PCs_jenks_2_expcats_script_run_2.Rev 
+rb2 /Volumes/1TB/Harvati/scripts_discrete/simulations_46traits_replicate_96_PCs_jenks_2_expcats_script_run_2.Rev 
+q()
+ntraits
+morpho
+q()
+morpho
+Q
+q()
