@@ -320,7 +320,7 @@ VarExpl <- round(L / sum(L), 4) * 100
 PC_Scores <- t(V) %*% t(traits) 
 traits_PCA <- t(PC_Scores)
 
-fileName <- "harvati_empirical"
+fileName <- paste0("harvati_empirical", ifelse(collapseHomo, "_nohomopops", ""))
 allTraits <- abind::abind(traits, traits_PCA, along = 3)
 ntraits <- 46
 
@@ -408,8 +408,8 @@ for(transData in c("raw", "PCs")){
       tempScript[1] <- paste0("setwd(\"", getwd(), "\") ")
       tempScript[2] <- paste0(tempScript[2], l)
       tempScript[3] <- paste0("replicateNum <- ", "\"noReplicate\"")
-      tempScript[5] <- paste0("coding <- \"", "jenks", "\"")
-      tempScript[6] <- paste0("dataFileName = ", paste0("v(", paste0("\"", fileName, ifelse(type == 1, "_raw", "_PCs"), "_jenks_", jenks_exp[jenks_exp_cats], "_expcats_", ncats, "_cats_traits.tsv\"", collapse = ", "), ")"))
+      tempScript[5] <- paste0("coding <- \"", "jenks", ifelse(collapseHomo, "_nohomopops", ""), "\"")
+      tempScript[6] <- paste0("dataFileName = ", paste0("v(", paste0("\"", fileName, "_", transData, "_jenks_", jenks_exp[jenks_exp_cats], "_expcats_", ncats, "_cats_traits.tsv\"", collapse = ", "), ")"))
       tempScript[7] <- paste0("transform = \"", transData, "\"")
       tempScript[8] <- paste0("ncats = v(", paste0(ncats, collapse = ", "), ")")
       tempScript[9] <- paste0("jenks_exp_cats = ", jenks_exp[jenks_exp_cats])

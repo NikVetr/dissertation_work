@@ -67,24 +67,59 @@ for (j in 1:length(traitNumIter)) { #iterates over trait number
   }
 }
 
-save(rfDists, file =  "rfDists.txt")
+# save(rfDists, file =  "rfDists.txt")
 load(file =  "rfDists.txt")
-par(mfrow = c(5,1))
-hist(rfDists[,1], breaks = 2*0:25, main = "bayesian mcc"); abline(v = mean(rfDists[,1]), col = 2, lwd = 2)
-hist(rfDists[,3], breaks = 2*0:25, main = "neighbor joining"); abline(v = mean(rfDists[,3]), col = 2, lwd = 2)
-hist(rfDists[,2], breaks = 2*0:25, main = "upgma"); abline(v = mean(rfDists[,2]), col = 2, lwd = 2)
-hist(rfDists[,4], breaks = 2*0:25, main = "parsimony"); abline(v = mean(rfDists[,4]), col = 2, lwd = 2)
-hist(rfDists[,5], breaks = 2*0:25, main = "parsimony-PCA"); abline(v = mean(rfDists[,5]), col = 2, lwd = 2)
+
+cols_noalpha <- brewer.pal(7, "Dark2")
+alpha = 0.5 * 255
+cols <- sapply(1:length(cols_noalpha), function(color) rgb(col2rgb(cols_noalpha[color])[1], 
+                                                           col2rgb(cols_noalpha[color])[2], 
+                                                           col2rgb(cols_noalpha[color])[3], 
+                                                           maxColorValue = 255, alpha = alpha))
+meths <- c("mccTree-mvBM", "upgma", "neighbor joining", "parsimony-DC_RAW", "parsimony-DC_PCA", "mccTree-mkRAW", "mccTree-mkPCA")
+trimZeros <- function(x, leaveR = 1){ #returns indices of non-0 values from ends trimmed off
+  inds <- min( which ( x != 0 )) : max( which( x != 0 )) 
+  if(leaveR > 0){
+    inds <- c(inds, inds[length(inds)] + 1:leaveR)
+  }
+  return(inds[inds > 0])
+}
+png(filename = "~/Documents/Harvati_Reanalysis_Manuscript/figures/figure3_MCC_hists.png", width = 1600, height = 2000)
+par(mfrow = c(length(traitNumIter),1), mar = c(4,5,4,3))
+for(i in 1:length(traitNumIter)){
+  hists <- lapply(1:length(meths), function(meth) hist(rfDists[[i]][,meth], breaks = 2*0:25, plot = F))
+  
+  plot(hists[[1]], lty="blank", col = cols[1], xlim = c(0,50), ylim = c(0,50), xlab = "Robinson-Foulds Distance", 
+       cex.lab = 2, cex.axis = 2, main = "")
+  box(which = "plot")
+  title(paste0(traitNumIter[i], " Traits"), cex.main = 3)
+  abline(v = mean(rfDists[[i]][,1]), col = cols[[1]], lwd = 4)
+  if(i==1){
+    legend(x = "topright", legend = meths, fill = cols, cex = 2)
+    legend(x = "topleft", legend = "Mean RF-Distance", lwd = 4, col = "darkgrey", cex = 2)
+  }
+  for(meth in 1:length(meths)){
+    plot(hists[[meth]], lty="blank", col = cols[meth], add = T); 
+    abline(v = mean(rfDists[[i]][,meth]), col = cols[[meth]], lwd = 4)
+  }
+  
+  lines(hists[[1]]$breaks[trimZeros(hists[[1]]$counts)], hists[[1]]$counts[trimZeros(hists[[1]]$counts)], type="s",col=cols[1], add = T, lwd = 2)
+  for(meth in 1:length(meths)){
+    lines(hists[[meth]]$breaks[trimZeros(hists[[meth]]$counts)], hists[[meth]]$counts[trimZeros(hists[[meth]]$counts)], type="s",col=cols[meth], add = T, lwd = 2)
+  }  
+
+}
+dev.off()
 
 par(mfrow = c(1,1))
 library(RColorBrewer)
 cols <- brewer.pal(5, "Dark2")
 bw <- 1.5
 alph <- 0.25
-plot(density(rfDists[,1], bw = bw), xlim = c(0,50), ylim = c(0,0.1), col = "white", main = "rf-dists to true, data-generating tree", xlab = "Robinson-Foulds Distance")
+plot(density(rfDists[[1]][,1], bw = bw), xlim = c(0,50), ylim = c(0,0.1), col = "white", main = "rf-dists to true, data-generating tree", xlab = "Robinson-Foulds Distance")
 for(i in 1:5){
-  polygon(density(rfDists[,i], bw = bw), col = add.alpha(cols[i], alpha = alph))
-  lines(density(rfDists[,i], bw = bw), col = cols[i]) 
+  polygon(density(rfDists[[1]][,i], bw = bw), col = add.alpha(cols[i], alpha = alph))
+  lines(density(rfDists[[1]][,i], bw = bw), col = cols[i]) 
 }
 legend(legend = colnames(rfDists), fill = cols, x = "topright")
 

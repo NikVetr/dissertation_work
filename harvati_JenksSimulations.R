@@ -335,7 +335,7 @@ for(i in 1:nreps){
           tempScript[2] <- paste0(tempScript[2], l)
           tempScript[3] <- paste0("replicateNum <- ", replicateNum)
           tempScript[5] <- paste0("coding <- \"", "jenks", "\"")
-          tempScript[6] <- paste0("dataFileName = ", paste0("v(", paste0("\"", fileName, ifelse(type == 1, "_raw", "_PCs"), "_jenks_", jenks_exp[jenks_exp_cats], "_expcats_", ncats, "_cats_traits.tsv\"", collapse = ", "), ")"))
+          tempScript[6] <- paste0("dataFileName = ", paste0("v(", paste0("\"", fileName, "_", transData, "_jenks_", jenks_exp[jenks_exp_cats], "_expcats_", ncats, "_cats_traits.tsv\"", collapse = ", "), ")"))
           tempScript[7] <- paste0("transform = \"", transData, "\"")
           tempScript[8] <- paste0("ncats = v(", paste0(ncats, collapse = ", "), ")")
           tempScript[9] <- paste0("jenks_exp_cats = ", jenks_exp[jenks_exp_cats])
