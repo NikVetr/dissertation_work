@@ -1,8 +1,8 @@
 library(geomorph)
 library(Matrix)
 
-normalize <- T
-noPCA <- F
+normalize <- F
+noPCA <- T
 PCA_covWG <- T
 collapseHomo <- F
 collapseSubsp <- F
@@ -152,27 +152,27 @@ for(i in 1:ntraits){
 }
 
 #make cov matrix
-cov <- matrix(nrow = ntraits, ncol = ntraits)
-for (i in 1:ntraits){
-  print(i)
-  for(j in 1:ntraits){
-    trait1 <- traits[[i]]
-    trait2 <- traits[[j]]
-    trait1means <- sapply(1:length(trait1), function(x) mean(trait1[[x]]))
-    trait2means <- sapply(1:length(trait2), function(x) mean(trait2[[x]]))
-    trait1deviations <- sapply(1:length(trait1), function(x) trait1[[x]] - trait1means[x])
-    trait2deviations <- sapply(1:length(trait2), function(x) trait2[[x]] - trait2means[x])
-    deviationsProducts <- sapply(1:length(trait1), function(x) trait1deviations[[x]] * trait2deviations[[x]])
-    sumALL <- 0
-    for (k in (1:length(deviationsProducts))){
-      sumALL <- sumALL + sum(deviationsProducts[[k]])
-    }
-    indiv <- sum(sapply(1:length(trait1), function(x) length(trait1[[x]])))
-    covariance <- sumALL/(indiv - length(deviationsProducts))
-    cov[i,j] <- covariance
-  }
-}
-if(noPCA){cov <- nearPD(cov)$mat}
+# cov <- matrix(nrow = ntraits, ncol = ntraits)
+# for (i in 1:ntraits){
+#   print(i)
+#   for(j in 1:ntraits){
+#     trait1 <- traits[[i]]
+#     trait2 <- traits[[j]]
+#     trait1means <- sapply(1:length(trait1), function(x) mean(trait1[[x]]))
+#     trait2means <- sapply(1:length(trait2), function(x) mean(trait2[[x]]))
+#     trait1deviations <- sapply(1:length(trait1), function(x) trait1[[x]] - trait1means[x])
+#     trait2deviations <- sapply(1:length(trait2), function(x) trait2[[x]] - trait2means[x])
+#     deviationsProducts <- sapply(1:length(trait1), function(x) trait1deviations[[x]] * trait2deviations[[x]])
+#     sumALL <- 0
+#     for (k in (1:length(deviationsProducts))){
+#       sumALL <- sumALL + sum(deviationsProducts[[k]])
+#     }
+#     indiv <- sum(sapply(1:length(trait1), function(x) length(trait1[[x]])))
+#     covariance <- sumALL/(indiv - length(deviationsProducts))
+#     cov[i,j] <- covariance
+#   }
+# }
+# if(noPCA){cov <- nearPD(cov)$mat}
 
 #compute matrix of population means
 traitsHARVATI <- matrix(nrow=npop, ncol=ntraits)
@@ -188,6 +188,7 @@ rownames(traitsHARVATI) <- gsub(x = gsub(x = gsub(x = unique(d$Population),
 
 colnames(traitsHARVATI) <- colnames(d)[-(ntraits+1)]
 
+cov <- covWG
 rownames(cov) <- colnames(cov) <- colnames(d)[-(ntraits+1)]
 
 
@@ -265,13 +266,20 @@ divergenceCodedTraits <- matrix(data = 0, nrow = numPops, ncol = ntraits)
 rownames(divergenceCodedTraits) <- rownames(traits)
 pval <- 0.05
 
+#correct small diffs... lol
+csd <- ifelse(noPCA, F, T)
 for(trait in 1:ntraits){
   divergenceMatrix <- matrix(data = 0, nrow = numPops, ncol = numPops)
   for(poprow in 2:numPops){
     for(popcol in 1:(poprow - 1)){
       poprowindiv <- as.numeric(pops[[poprow]][trait,])
       popcolindiv <- as.numeric(pops[[popcol]][trait,])
+      if(csd){
+        popcolindiv <- popcolindiv - poprowindiv[1]
+        poprowindiv <- poprowindiv - poprowindiv[1]
+      }
       significance <- t.test(poprowindiv, popcolindiv)$p.value < pval
+      # print(t.test(poprowindiv, popcolindiv)$p.value)
       if(significance){
         if(mean(popcolindiv) > mean(poprowindiv)){
           divergenceMatrix[poprow, popcol] <- 1
@@ -290,6 +298,24 @@ for(trait in 1:ntraits){
 for(foo in 1:length(divergenceCodedTraits[1,])){
   divergenceCodedTraits[,foo] <- divergenceCodedTraits[,foo] + abs(min(divergenceCodedTraits[,foo])) + 1
 }
+
+
+
+#write distance matrix to file
+eucl <- F; univSlide <- T
+d <- divergenceCodedTraits
+if(eucl){distmat <- stats::dist(d)}
+if(univSlide){
+  distmat_univ <- lapply(1:length(d[1,]), function(tr) stats::dist(d[,tr]))
+  distmat <- distmat_univ[[1]]
+  for(i in 2:length(distmat_univ)){
+    distmat <- distmat + distmat_univ[[i]]
+  }
+}
+
+writeDist(distmat, file = paste0("output/parsDistances_empirical", ifelse(noPCA, "_RAW", "_PCA"), "_divergenceCoding.dist"))
+
+
 
 #conver to phyDat format
 DCT.pD <- phyDat(divergenceCodedTraits, type = "USER", levels = 1:(numPops*2-1))
@@ -320,6 +346,22 @@ if(meanValueCodingDo){
   traitMeans <- sapply(1:length(traits[1,]), function(x) mean(traits[,x]))
   meanBinarizedTraits <- t(sapply(1:length(traits[,1]), function(x) traits[x,] > traitMeans))
   rownames(meanBinarizedTraits) <- rownames(traits)
+  
+  #write distance matrix to file
+  eucl <- F; univSlide <- T
+  d <- meanBinarizedTraits
+  d[d] <- 1
+  if(eucl){distmat <- stats::dist(d)}
+  if(univSlide){
+    distmat_univ <- lapply(1:length(d[1,]), function(tr) stats::dist(d[,tr]))
+    distmat <- distmat_univ[[1]]
+    for(i in 2:length(distmat_univ)){
+      distmat <- distmat + distmat_univ[[i]]
+    }
+  }
+  
+  writeDist(distmat, file = paste0("output/parsDistances_empirical", ifelse(noPCA, "_RAW", "_PCA"), "_MVC.dist"))
+  
   meanBinarizedTraits[meanBinarizedTraits] <- "L"
   meanBinarizedTraits[meanBinarizedTraits == "FALSE"] <- "S"
   mBT.pD <- phyDat(meanBinarizedTraits, type = "USER", levels = c("L", "S"))
@@ -338,7 +380,7 @@ if(meanValueCodingDo){
   # if(class(bestTrees) == "multiPhylo"){avgRFdistMVC <- mean(sapply(1:length(bestTrees), function(x) dist.topo(unroot(trueTree), bestTrees[[x]])[1]))
   # } else {avgRFdistMVC <- dist.topo(unroot(trueTree), bestTrees)[1]}
 }
-write.tree(bestTrees, paste0("output/maximumParsimonyTree_empirical", ifelse(noPCA, "_RAW", "_PCA"), "_MVC.txt"))
+write.tree(bestTrees_MVC, paste0("output/maximumParsimonyTree_empirical", ifelse(noPCA, "_RAW", "_PCA"), "_MVC.txt"))
 
 #get mahalonibis distance matrix
 mahDistMat <- mahaMatrix(traits, wgCM, squared = F)

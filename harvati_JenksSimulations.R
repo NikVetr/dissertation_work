@@ -366,3 +366,70 @@ for(i in 1:500){
 
 #terminal command; can use system() but screen output is messy
 cat(paste0("cd ", getwd(), "; parallel --jobs 8 --sshloginfile /Volumes/macOS/Users/nikolai/instances_noDogCat --eta --results terminal_output_jenks --files < jobs_rb_freek_jenks.txt"))
+
+
+
+
+###################################################
+##### restart simulation analyses after crash #####
+###################################################
+
+
+nreps <- 100
+traitNumIter <- c((46-1)*2^(0:4)+1)
+jenks_exp <- c(2,4,6,8)
+jenks_exp <- c(2)
+nrun <- 2
+
+counter <- 0
+for(i in 1:nreps){
+  
+  cat(paste0("\n", i, ":"))
+  
+  for(j in 1:length(traitNumIter)){
+    
+    cat(paste0(" ", j, " "))
+    
+    ntraits <- traitNumIter[j]
+    replicateNum <- i
+    
+    fileName <- paste0("simulations_", ntraits, "traits_", "replicate_", replicateNum)
+    
+    #get true tree just in case lol
+    trueTree <- read.nexus(file = paste0("trees/", fileName, "_tree.nex"))
+    tips <- trueTree$tip.label
+    ntips <- length(tips)
+    
+    counter <- counter + 1
+    if(counter == 1){
+      file.remove("jobs_rb_freek_jenks_restart.txt")
+    }
+    
+    for(transData in c("raw", "PCs")){
+      
+      for(jenks_exp_cats in 1:length(jenks_exp)){
+        
+        # write the master scripts
+        for (l in 1:nrun) {
+          started <- file.exists(paste0("output_discrete_jenks//", fileName, "_jenks_", jenks_exp[jenks_exp_cats], "_", transData, "_params_run_", l, ".log"))
+          if(started){
+            tempLog <- read.table(paste0("output_discrete_jenks//", fileName, "_jenks_", jenks_exp[jenks_exp_cats], "_", transData, "_params_run_", l, ".log"), header = T)
+            finished <- length(tempLog$Iteration) == 1501
+          } else { finished <- started}
+          
+          if(!finished){
+            cat(paste0("nf ", j, " "))
+            sink(file = "jobs_rb_freek_jenks_restart.txt", append = T)
+            cat(paste0("cd ", getwd(), "; ",  "/Users/nikolai/repos/revbayes-development/projects/cmake/rb2 ", 
+                       paste0("scripts_discrete/", fileName, "_", transData, "_jenks_", jenks_exp[jenks_exp_cats], "_expcats_script_run_", l, ".Rev\n")))
+            sink()
+          }
+        }
+      }   
+    }
+  }
+}
+
+
+#terminal command; can use system() but screen output is messy
+cat(paste0("cd ", getwd(), "; parallel --jobs 8 --sshloginfile /Volumes/macOS/Users/nikolai/instances_noDogCat --eta --results terminal_output_jenks --files < jobs_rb_freek_jenks_restart.txt"))

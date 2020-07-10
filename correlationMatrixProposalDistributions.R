@@ -886,6 +886,29 @@ paste0("acceptance ratio = ", n_accept / n_iter)
 ### How about in the more efficient formulation?
 ### ### ### ### ### ### ### ### ### ### ### ### 
 
+library(rethinking)
+library(MCMCpack)
+library(microbenchmark)
+
+rlkj <- function (K, eta = 1) {
+  alpha <- eta + (K - 2)/2
+  r12 <- 2 * rbeta(1, alpha, alpha) - 1
+  R <- matrix(0, K, K)
+  R[1, 1] <- 1
+  R[1, 2] <- r12
+  R[2, 2] <- sqrt(1 - r12^2)
+  if (K > 2) 
+    for (m in 2:(K - 1)) {
+      alpha <- alpha - 0.5
+      y <- rbeta(1, m/2, alpha)
+      z <- rnorm(m, 0, 1)
+      z <- z/sqrt(crossprod(z)[1])
+      R[1:m, m + 1] <- sqrt(y) * z
+      R[m + 1, m + 1] <- sqrt(1 - y)
+    }
+  return(crossprod(R))
+  
+}
 choleskalator <- function(mat, ind){
   dim <- dim(mat)[1]
   if(ind == dim){
@@ -954,17 +977,17 @@ blooming_onion_tune_chol <- function (upper_cholesky_factor, ind, varN = 0.1, be
   return(list(sample = R, log_prop_ratio = log_prop_ratio))
 }
 
-dim <- 10
-cormat <- rlkj(dim)
-cholfac <- chol(cormat)
-microbenchmark(blooming_onion_tune_chol(upper_cholesky_factor = cholfac, ind = sample(1:dim, 1), varN = 0.1, betaWindow = 0.1), 
-               blooming_onion_tune_clean(cor = cormat, varN = 0.1, betaWindow = 0.1))
+# dim <- 10
+# cormat <- rlkj(dim)
+# cholfac <- chol(cormat)
+# microbenchmark(blooming_onion_tune_chol(upper_cholesky_factor = cholfac, ind = sample(1:dim, 1), varN = 0.1, betaWindow = 0.1), 
+#                blooming_onion_tune_clean(cor = cormat, varN = 0.1, betaWindow = 0.1))
 
 
-dim <- 10
+dim <- 46
 target_corr <- rlkj(dim)
 true_corrs <- target_corr[upper.tri(target_corr)]
-n_obs <- 40
+n_obs <- 10
 varN <- 0.5
 betaWindow <- 0.2
 sampleUniform <- T
@@ -1002,8 +1025,8 @@ for(i in 2:n_iter){
   if(sampleUniform){
     log_dens_ratio <- 0 
   } else {
-    log_dens_ratio <- sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = corr_prop, log = T)) - 
-      sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = corr_mats[,,i-1], log = T))
+    log_dens_ratio <- sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = t(corr_prop) %*% corr_prop, log = T)) - 
+      sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = t(corr_curr) %*% corr_curr, log = T))
   }
   
   #accept or reject

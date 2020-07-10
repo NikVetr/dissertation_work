@@ -184,51 +184,32 @@ foreach(m=1:100, .packages = c("ape", "coda", "rwty", "phangorn", "lattice", "la
 }
 }
 
-setwd(dir = "/Volumes/2TB/500/full/mvBM_sims_PB_noiseless_500/")
-traitNumIter <- c(2,4,8,16,32,64,128)
-# traitNumIter <- c(128)
-degreeCorrelation <- c("2", "4", "6", "8", "9")
-# degreeCorrelation <- c("2")
+setwd(dir = "/Volumes/1TB/Harvati/")
 
-for (k in 1:length(degreeCorrelation)) { #degree correlation
+traitNumIter <- (15*(2^(0:4)))*3+1
+transforms <- c("raw", "PCs")
+
+foreach(m=1:100, .packages = c("ape", "coda", "rwty", "phangorn", "lattice", "latticeExtra")) %dopar% {
   
-  bipartsReduced<- data.frame()
+  traitNumIter <- (15*(2^(0:4)))*3+1
+  traitNumIter <- rev(traitNumIter)
+  transforms <- c("raw", "PCs")
   
-  for (j in 1:length(traitNumIter)) { #num traits
+  for (j in 1:length(traitNumIter)) {
     
-    for(i in 1:500){ #replicate
+    for(i in m:m){
       
-      cat(c(k,j,i, "... \n"))
-      
-      ntraits <- traitNumIter[j]
-      rateMatrixCorrelation <- degreeCorrelation[k]
-      replicateNum <- i
-      
-      fileName <- paste0("simulations_", ntraits, "traits_perfectRateMatrix_", rateMatrixCorrelation, "correlationStrength_noiseless_", "replicate_", replicateNum)
-      load(file = paste0("bipartitionPosteriors/", fileName, "_bipartitionProbs"))
-      # nums[i] <- (mean(biparts[biparts[,1] > 0.9 & biparts[,1] < 1,3]))
-      
-      #get internality measure
-      internality <- sapply(1:length(biparts[,1]), function(x) length(biparts[x,2][[1]]))
-      internality[internality > 15] <- 30 - internality[internality > 15]
-      biparts$internality <- internality
-      
-      bipartsReduced <- rbind(bipartsReduced,biparts[biparts[,1] > .005,][-1,])
-      
-      
+      for(transform in transforms){
+        
+        load(x = biparts, file = paste0(paste0("bipartitionPosteriors_", model), "/", fileName, "_bipartitionProbs"))
+      }
     }
   }
-  # save(bipartsReduced, file = paste0("bipartitionPosteriors/bipartsReduced_PB_128Traits_noError0.", rateMatrixCorrelation))
-  save(bipartsReduced, file = paste0("bipartitionPosteriors/bipartsReduced_PB_allTraits_noError0.", rateMatrixCorrelation))
 }
-
-##################################################################################################################
-
-# load(file = paste0("bipartitionPosteriors/bipartsReduced_PB_128Traits_noError0.", correlationStrength))
-# load(file = paste0("bipartitionPosteriors/bipartsReduced_PB_64Traits_noError0.", correlationStrength))
 
 #making the manuscript figure
 
+png(filename = "~/Documents/Harvati_Reanalysis_Manuscript/figures/figure1_nj_mahalanobis.png", width = 1600, height = 800)
 png(filename = "~/mvbm_manuscript/figures/calibrationCurvePBT.png", width = 1200, height = 600)
 par(mfrow = c(1,2), mar = c(3,3,3,0.75))
 for(i in 1:2){

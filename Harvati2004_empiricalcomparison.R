@@ -701,10 +701,15 @@ for(i in 1:1){
 njTree <- read.tree(file = paste0("output/empirical_neighborJoining.txt"))
 upgmaTree <- read.tree(file = paste0("output/empirical_upgma.txt"))
 outg <- as.character(unlist(sapply(c("Macaca", "Mandrillus", "Papio"), function(genus) spOnly$tip.label[grepl(genus, spOnly$tip.label)])))
-hptree <- reroot(tree = njTree, interactive = T, position = njTree$edge.length[which(njTree$edge[,2] ==  getMRCA(njTree, outg))] / 2); plot(hptree)
-
+while(length(which(njTree$edge[,2] == getMRCA(njTree, outg))) == 0){
+  njTree <- reroot(njTree, node.number = sample(size = 1, 1:njTree$Nnode))
+}
+hptree <- reroot(tree = njTree, node.number = getMRCA(njTree, outg), position = 
+                   njTree$edge.length[which(njTree$edge[,2] ==  getMRCA(njTree, outg))] / 2); plot(hptree)
 assoc <- cbind(mol_tree$tip.label[mol_tree$tip.label != "Homo_sapiens"], mol_tree$tip.label[mol_tree$tip.label != "Homo_sapiens"])
 assoc <- rbind(assoc, cbind(rep("Homo_sapiens", length(hptree$tip.label[grepl("Homo_sap", hptree$tip.label)])), hptree$tip.label[grepl("Homo_sap", hptree$tip.label)]))
+spOnly <- drop.tip(hptree, tip = assoc[startsWith(assoc[,2], "Homo_s"),2][-1]); 
+spOnly$tip.label[spOnly$tip.label == assoc[startsWith(assoc[,2], "Homo_s"),2][1]] <- "Homo_sapiens"
 coph_plot_hp <- cophylo(mol_tree, hptree, assoc = assoc, rotate = T)
 plot_pop_tree <- T
 for(i in 1:1){
@@ -723,6 +728,8 @@ for(i in 1:1){
   dev.off()
 }
 hptree <- upgmaTree
+spOnly <- drop.tip(hptree, tip = assoc[startsWith(assoc[,2], "Homo_s"),2][-1]); 
+spOnly$tip.label[spOnly$tip.label == assoc[startsWith(assoc[,2], "Homo_s"),2][1]] <- "Homo_sapiens"
 coph_plot_hp <- cophylo(mol_tree, hptree, assoc = assoc, rotate = T)
 for(i in 1:1){
   png(filename = "Documents/Harvati_Reanalysis_Manuscript/figures/figure1_upgma_mahalanobis.png", width = 1600, height = 800)
@@ -741,34 +748,73 @@ for(i in 1:1){
 }
 
 #vs the parsimony trees
-DC_PCA_tree <- read.tree(file = paste0("output/maximumParsimonyTree_empirical_PCA_divergenceCoding.txt"))[[1]]
-MVC_PCA_tree <- read.tree(file = paste0("output/maximumParsimonyTree_empirical_PCA_MVC.txt"))[[1]]
-DC_RAW_tree <- read.tree(file = paste0("output/maximumParsimonyTree_empirical_RAW_divergenceCoding.txt"))
-MVC_RAW_tree <- read.tree(file = paste0("output/maximumParsimonyTree_empirical_RAW_MVC.txt"))
+DC_PCA_tree <- maxCladeCred(read.tree(file = paste0("output/maximumParsimonyTree_empirical_PCA_divergenceCoding.txt")))
+MVC_PCA_tree <- maxCladeCred(read.tree(file = paste0("output/maximumParsimonyTree_empirical_PCA_MVC.txt")))
+DC_RAW_tree <- maxCladeCred(read.tree(file = paste0("output/maximumParsimonyTree_empirical_RAW_divergenceCoding.txt")))
+MVC_RAW_tree <- maxCladeCred(read.tree(file = paste0("output/maximumParsimonyTree_empirical_RAW_MVC.txt")))
+Jenks2_RAW_tree <- maxCladeCred(read.tree(file = paste0("output/maximumParsimonyTree_harvati_empirical_raw_jenks_2_expcats.txt")))
+Jenks4_RAW_tree <- maxCladeCred(read.tree(file = paste0("output/maximumParsimonyTree_harvati_empirical_raw_jenks_4_expcats.txt")))
+Jenks6_RAW_tree <- maxCladeCred(read.tree(file = paste0("output/maximumParsimonyTree_harvati_empirical_raw_jenks_6_expcats.txt")))
+Jenks2_PCA_tree <- maxCladeCred(read.tree(file = paste0("output/maximumParsimonyTree_harvati_empirical_PCs_jenks_2_expcats.txt")))
+Jenks4_PCA_tree <- maxCladeCred(read.tree(file = paste0("output/maximumParsimonyTree_harvati_empirical_PCs_jenks_4_expcats.txt")))
+Jenks6_PCA_tree <- maxCladeCred(read.tree(file = paste0("output/maximumParsimonyTree_harvati_empirical_PCs_jenks_6_expcats.txt")))
 
-outg <- as.character(unlist(sapply(c("Macaca", "Mandrillus", "Papio"), function(genus) spOnly$tip.label[grepl(genus, spOnly$tip.label)])))
-hptree <- reroot(tree = DC_PCA_tree, interactive = T, position = DC_PCA_tree$edge.length[which(DC_PCA_tree$edge[,2] ==  getMRCA(DC_PCA_tree, outg))] / 2); plot(hptree)
-hptree <- reroot(tree = MVC_PCA_tree, node.number = getMRCA(MVC_PCA_tree, outg), position = 
-                   MVC_PCA_tree$edge.length[which(MVC_PCA_tree$edge[,2] ==  getMRCA(MVC_PCA_tree, outg))] / 2); plot(hptree)
-assoc <- cbind(mol_tree$tip.label[mol_tree$tip.label != "Homo_sapiens"], mol_tree$tip.label[mol_tree$tip.label != "Homo_sapiens"])
-assoc <- rbind(assoc, cbind(rep("Homo_sapiens", length(hptree$tip.label[grepl("Homo_sap", hptree$tip.label)])), hptree$tip.label[grepl("Homo_sap", hptree$tip.label)]))
-coph_plot_hp <- cophylo(mol_tree, hptree, assoc = assoc, rotate = T)
-plot_pop_tree <- T
-for(i in 1:1){
-  png(filename = "Documents/Harvati_Reanalysis_Manuscript/figures/figure1_parsimony_mvc_pca.png", width = 1600, height = 800)
-  if(plot_pop_tree){
-    plot.cophylo(coph_plot_hp, mar=c(0,0,2,0), lwd = 4,  fsize = c(2,1.75), link.lwd=4)
-  } else {
-    plot.cophylo(coph_plot, mar=c(0,0,2,0), lwd = 4,  fsize = 2, link.lwd=4)
-  }
-  # df(); plot.cophylo(coph_plot)
-  par(xpd=TRUE)
+parsTrees <- list(DC_PCA_tree, MVC_PCA_tree, DC_RAW_tree, MVC_RAW_tree, Jenks2_RAW_tree, Jenks4_RAW_tree, Jenks6_RAW_tree, Jenks2_PCA_tree, Jenks4_PCA_tree, Jenks6_PCA_tree)
+parsTrees_names <- trimws(c("DC_PCA_tree", " MVC_PCA_tree", " DC_RAW_tree", " MVC_RAW_tree", " Jenks2_RAW_tree", " Jenks4_RAW_tree", " Jenks6_RAW_tree", " Jenks2_PCA_tree", " Jenks4_PCA_tree", " Jenks6_PCA_tree"))
+
+#read in the stepwise parsimony distance matrices, i.e. euclidean distances on marginal traits
+DC_PCA_dist <- readDist( "output/parsDistances_empirical_PCA_divergenceCoding.dist" )
+MVC_PCA_dist <- readDist( "output/parsDistances_empirical_PCA_MVC.dist" )
+DC_RAW_dist <- readDist( "output/parsDistances_empirical_RAW_divergenceCoding.dist" )
+MVC_RAW_dist <- readDist( "output/parsDistances_empirical_RAW_MVC.dist" )
+Jenks2_RAW_dist <- readDist( "output/jenksDistances_harvati_empirical_raw_jenks_2_expcats.dist")
+Jenks4_RAW_dist <- readDist( "output/jenksDistances_harvati_empirical_raw_jenks_4_expcats.dist")
+Jenks6_RAW_dist <- readDist( "output/jenksDistances_harvati_empirical_raw_jenks_6_expcats.dist")
+Jenks2_PCA_dist <- readDist( "output/jenksDistances_harvati_empirical_PCs_jenks_2_expcats.dist")
+Jenks4_PCA_dist <- readDist( "output/jenksDistances_harvati_empirical_PCs_jenks_4_expcats.dist")
+Jenks6_PCA_dist <- readDist( "output/jenksDistances_harvati_empirical_PCs_jenks_6_expcats.dist")
+
+parsTrees_dists <- list(DC_PCA_dist, MVC_PCA_dist, DC_RAW_dist, MVC_RAW_dist, Jenks2_RAW_dist, Jenks4_RAW_dist, Jenks6_RAW_dist, Jenks2_PCA_dist, Jenks4_PCA_dist, Jenks6_PCA_dist)
   
-  title("       Molecular                                          Morphological", cex.main = 3, line = -0.1)
-  title(paste0("RF-Distance = ", RF.dist(mol_tree, spOnly)), cex.main = 1.75, line = -1.2)
-  
-  dev.off()
+for(i in 1:length(parsTrees_dists)){
+  parsTrees[[i]] <- nnls.phylo(parsTrees[[i]], parsTrees_dists[[i]])
+  # parsTrees[[i]]$edge.length[parsTrees[[i]]$edge.length == 0] <- 0.1
 }
+
+for(tree_ind in 1:length(parsTrees_names)){
+  tree_to_use <- parsTrees[[tree_ind]]
+  tree_to_use_name <- parsTrees_names[[tree_ind]]
+  tiplabs <- tree_to_use$tip.label
+  outg <- as.character(unlist(sapply(c("Macaca", "Mandrillus", "Papio"), function(genus) tiplabs[grepl(genus, tiplabs)])))
+  # hptree <- root(tree_to_use, outgroup = outg); plot(hptree)
+  while(length(which(tree_to_use$edge[,2] == getMRCA(tree_to_use, outg))) == 0){
+    tree_to_use <- reroot(tree_to_use, node.number = sample(size = 1, 1:tree_to_use$Nnode))
+  }
+  hptree <- reroot(tree = tree_to_use, node.number = getMRCA(tree_to_use, outg), position = 
+                     tree_to_use$edge.length[which(tree_to_use$edge[,2] ==  getMRCA(tree_to_use, outg))] / 2); plot(hptree)
+  assoc <- cbind(mol_tree$tip.label[mol_tree$tip.label != "Homo_sapiens"], mol_tree$tip.label[mol_tree$tip.label != "Homo_sapiens"])
+  assoc <- rbind(assoc, cbind(rep("Homo_sapiens", length(hptree$tip.label[grepl("Homo_sap", hptree$tip.label)])), hptree$tip.label[grepl("Homo_sap", hptree$tip.label)]))
+  spOnly <- drop.tip(hptree, tip = assoc[startsWith(assoc[,2], "Homo_s"),2][-1]); 
+  spOnly$tip.label[spOnly$tip.label == assoc[startsWith(assoc[,2], "Homo_s"),2][1]] <- "Homo_sapiens"
+  coph_plot_hp <- cophylo(mol_tree, hptree, assoc = assoc, rotate = T)
+  plot_pop_tree <- T
+  for(i in 1:1){
+    png(filename = paste0("Documents/Harvati_Reanalysis_Manuscript/figures/figure1_parsimony_", tree_to_use_name, ".png"), width = 1600, height = 800)
+    if(plot_pop_tree){
+      plot.cophylo(coph_plot_hp, mar=c(0,0,2,0), lwd = 4,  fsize = c(2,1.75), link.lwd=4)
+    } else {
+      plot.cophylo(coph_plot, mar=c(0,0,2,0), lwd = 4,  fsize = 2, link.lwd=4)
+    }
+    # df(); plot.cophylo(coph_plot)
+    par(xpd=TRUE)
+    
+    title("       Molecular                                          Morphological", cex.main = 3, line = -0.1)
+    title(paste0("RF-Distance = ", RF.dist(mol_tree, spOnly)), cex.main = 1.75, line = -1.2)
+    
+    dev.off()
+  }
+}
+
 hptree <- upgmaTree
 coph_plot_hp <- cophylo(mol_tree, hptree, assoc = assoc, rotate = T)
 for(i in 1:1){

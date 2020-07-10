@@ -20,6 +20,10 @@ rlkj <- function (K, eta = 1) {
   return(crossprod(R))
 }
 
+detbivcor <- function(rhos){
+  sapply(rhos, function(rho) det(diag(2)*(1-rho) + rho))
+}
+
 pbivnorm_infs <- function(upper1, upper2, rhos){
   nInf <- (upper1 == -Inf | upper2 == -Inf)
   Inf1 <- upper1 == Inf
@@ -36,23 +40,35 @@ pbivnorm_infs <- function(upper1, upper2, rhos){
   return(results)
 } #checks for buggy edge cases and corrects
 
-compareCompVsFull <- function(dimr, cor = NA, meanl = -1, meanu = 1, lower = NA, upper = NA){
+compareCompVsFull <- function(dimr, cor = NA, meanl = -1, meanu = 1, lower = NA, upper = NA, uniformWindow = F, unifL = c(-1,0), unifU = c(0,1), repError = F){
   if(all(is.na(cor))){
     x <- rlkj(dimr)
   } else {
     x <- cor
+    dimr <- dim(x)[1]
   }
-  if(all(is.na(lower))){
-    lower <- rnorm(dimr, mean = meanl)
+  
+  if(!uniformWindow){
+    if(all(is.na(lower))){
+      lower <- rnorm(dimr, mean = meanl)
+    }
+    if(all(is.na(upper))){
+      upper <- rnorm(dimr, mean = meanu)
+    }
+    swapi <- lower > upper
+    swap <- upper[swapi]
+    upper[swapi] <- lower[swapi]
+    lower[swapi] <- swap
   }
-  if(all(is.na(upper))){
-    upper <- rnorm(dimr, mean = meanu)
+  
+  if(uniformWindow){
+    lower <- runif(n = dimr, unifL[1], unifL[2])
+    upper <- lower + runif(n = dimr, unifU[1], unifU[2])
   }
-  swapi <- lower > upper
-  swap <- upper[swapi]
-  upper[swapi] <- lower[swapi]
-  lower[swapi] <- swap
-  trueprob = log(pmvnorm(lower = lower, upper = upper, corr = x)[1])
+  
+  trueprob <- (pmvnorm(lower = lower, upper = upper, corr = x, algorithm = GenzBretz()))
+  errorMag <- attr(trueprob, "error") / trueprob[1]
+  trueprob <- log(trueprob[1])
   
   uppers <- matrix(0, choose(dimr, 2), 2)
   lowers <- matrix(0, choose(dimr, 2), 2)
@@ -73,28 +89,88 @@ compareCompVsFull <- function(dimr, cor = NA, meanl = -1, meanu = 1, lower = NA,
     pbivnorm_infs(lowers[,1], lowers[,2], rhos)
   
   probs[probs < 0] <- 0 #get rid of floating point errors
-  prob <- mean(log(probs))# * dimr * 0.6 + dimr / 8
-  return(c(trueprob, prob))
+  prob1 <- mean(log(probs)) #geometric mean
+  # prob2 <- log(1 / (mean(1 / (probs)))) #harmonic mean
+  # prob3 <- log(mean(probs)) #arithmetic mean
+  prob <- prob1
+  prob <- prob * dimr / 2
+  if(!repError){
+    return(c(trueprob, prob))
+  } else if(repError){
+    return(c(trueprob, prob, errorMag))
+  }
 }
 
-dimr <- 50
-nrep <- 200
-r <- diag(dimr) * 0.5 + 0.5 
+r2_1to1 <- function(var1, var2, uplow = F){
+  if(!uplow){return(1 - (var(var1 - var2) / var(var1)))}
+  if(uplow){
+    tot <- 1 - (var(var1 - var2) / var(var1))
+    low <- var1 > var2
+    up <- 1 - (var(var1[!low] - var2[!low]) / var(var1[!low]))
+    low <- 1 - (var(var1[low] - var2[low]) / var(var1[low]))
+    return(c(tot, up, low))
+  }
+}
+
+dimr <- 80
+nrep <- 500
 comparingTrueVsComp <- t(replicate(nrep, compareCompVsFull(dimr, cor = NA)))
 # comparingTrueVsComp[,2] <- comparingTrueVsComp[,2] / dimr
-lm(comparingTrueVsComp[,1] ~ comparingTrueVsComp[,2])
+# lm(comparingTrueVsComp[,1] ~ comparingTrueVsComp[,2])
+cor(comparingTrueVsComp[,1], comparingTrueVsComp[,2])^2
+r2_1to1(comparingTrueVsComp[,1], comparingTrueVsComp[,2], uplow = T)
 # lm(exp(comparingTrueVsComp[,1]) ~ exp(comparingTrueVsComp[,2]))
 
-
-dev.off()
 par(mar = c(5,5,3,3))
-plot(comparingTrueVsComp, xlab = "\"full\" multivariate normal integral", ylab = "composite integral obtained from \nall pairwise bivariate integrals")
+plot(comparingTrueVsComp[,1:2], xlab = "\"full\" multivariate normal integral", ylab = "composite integral obtained from \nall pairwise bivariate integrals")
 title(paste0("dimension = ", dimr, ", r = ", round(cor(comparingTrueVsComp)[1,2], 3)))
 abline(0, 1, lwd = 2, col = 2)
 legend(x = "topleft", legend = "1-to-1 line", col = 2, lwd = 2, lty = 1)
 
-plot(comparingTrueVsComp, xlab = "\"full\" multivariate normal integral", ylab = "composite integral obtained from \nall pairwise bivariate integrals")
-# compareCompVsFull(dimr, lower = rep(-3, dimr), upper = rep(3, dimr))
+
+##############################
+#### making a nice figure ####
+##############################
+
+#approximation will underestimate how tiny very low full mvn probs are
+#but this might also be running up against the limits of GenzBretz' abilities
+
+dims <- 2:150
+r2s <- matrix(0, nrow = c(length(dims)), ncol = 4)
+nrep <- 2000
+error_magnitude_threshold <- 0.25
+
+for(dimr in dims){
+  cat(paste0(dimr, " "))
+  comparingTrueVsComp <- t(replicate(nrep, compareCompVsFull(dimr, cor = NA, uniformWindow = T, unifL = c(-1,0), unifU = c(0,1), repError = T)))
+  if(length(which(comparingTrueVsComp == -Inf, arr.ind = T)[,1]) > 0){
+    comparingTrueVsComp <- comparingTrueVsComp[-which(comparingTrueVsComp == -Inf, arr.ind = T)[,1],] #remove -Inf errors
+  }
+  if(length(which(comparingTrueVsComp[,3] > error_magnitude_threshold)) > 0){
+    comparingTrueVsComp <- comparingTrueVsComp[-which(comparingTrueVsComp[,3] > error_magnitude_threshold),] #remove high error estimates for full multiv
+  }
+  if(length(which(comparingTrueVsComp[,3] == error_magnitude_threshold)) > 0){
+    comparingTrueVsComp <- comparingTrueVsComp[-which(comparingTrueVsComp[,3] == error_magnitude_threshold),] #remove high error estimates for full multiv
+  }
+  
+  r2s[dimr-1,] <- c(cor(comparingTrueVsComp[,1], comparingTrueVsComp[,2])^2, r2_1to1(comparingTrueVsComp[,1], comparingTrueVsComp[,2], uplow = T))
+}
+
+plot(r2s[,3])
+
+# bigdiff <- F
+# while(!bigdiff){
+#   r <- rlkj(dimr)
+#   lower <- runif(n = dimr, unifL[1], unifL[2])
+#   upper <- lower + runif(n = dimr, unifU[1], unifU[2])
+#   vals <- compareCompVsFull(cor = r, lower = lower, upper = upper) #oh wow the full one is super unstable!
+#   if(diff(vals) > 50){
+#     bigdiff = T
+#   }
+# }
+
+# dev.off()
+
 
 dimrange <- 1:10
 intercepts <- rep(0, length(dimrange))
@@ -116,3 +192,26 @@ plot(dimrange*10, intercepts, xlab = "dimension", ylab = "least squares estimate
 lm(intercepts ~ tdmr)
 (intercepts / (dimrange*2))
 diff(intercepts)
+
+# 
+# par(mfrow = c(1,1))
+# dimr <- 2:20
+# corcof <- 0.2
+# vals <- sapply(dimr, function(x) compareCompVsFull(dimr = x, cor = (diag(x)*(1-corcof) + corcof), lower = rep(-0.5, x), upper = rep(0.5, x)))
+# plot(dimr, vals[1,]); abline()
+# dimr2 <- dimr - 2
+# lm(vals[1,] ~ (dimr2))
+# 
+# 
+# plot(log(sapply(2:50, function(x) det(diag(x)*(1-corcof) + corcof))))
+# lm(log(sapply(dimr, function(x) det(diag(x)*(1-corcof) + corcof)))* 0.5 ~ dimr)
+# 
+# plot(t(sapply(1:9/10, function(x) compareCompVsFull(dimr = 20, cor = (diag(20)*(1-x) + x), lower = rep(-0.5, 20), upper = rep(0.5, 20)))))
+# 
+# f <- function(){
+#   R <- rlkj(20)
+#   c(log(det(R)), sum(log(detbivcor(R[upper.tri(R)]))))
+# }
+# 
+# plot(t(replicate(100, f())))
+
