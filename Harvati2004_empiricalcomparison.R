@@ -4,6 +4,7 @@ library(geomorph)
 library(Matrix)
 library(phytools)
 library(phangorn)
+library(Rphylip)
 
 normalize <- T
 noPCA <- T
@@ -186,7 +187,7 @@ subsp <- unique(codes_linnaen[,4])
 # root(rethinking_tree, outgroup = "Galeopterus variegatus")
 # plot(rethinking_tree)
 tenk_trees <- read.nexus("/Users/nikolai/Documents/TreeBlock_10kTrees_Primates_Version3.nex")
-tenk_tree <- maxCladeCred(tenk_trees)
+tenk_tree <- Rconsense(tenk_trees, path = "/Volumes/macOS/Users/nikolai/Downloads/phylip-3.695/")
 
 # Text S2. Timetrees and RAxML phylograms in Newick format.
 # 1. Newick timetree with autocorrelated rates and hard-bounded constraints. One unit = 100 million years. 
@@ -232,6 +233,27 @@ jenks2Trees_PCA_hp <- c(read.tree("output/empirical_46traits_jenks_2_PCs_trees_r
 jenks4Trees_PCA_nhp <- c(read.tree("output/empirical_46traits_jenks_nohomopops_4_PCs_trees_run_1.trees"), read.tree("output/empirical_46traits_jenks_nohomopops_4_PCs_trees_run_2.trees"))
 jenks4Trees_PCA_hp <- c(read.tree("output/empirical_46traits_jenks_4_PCs_trees_run_1.trees"), read.tree("output/empirical_46traits_jenks_4_PCs_trees_run_2.trees"))
 
+trees <- c(read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_females_noHomopops_uninfRM_PCA95_c1.trees"),
+           read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_females_noHomopops_uninfRM_PCA95_c2.trees"))
+# trees <- c(read.tree("/Volumes/1TB/Harvati_Empirical/output/iid_exp/harvati_PCA_bothSexes_noHomopops_univBM_PCA100_c1.trees"),
+           # read.tree("/Volumes/1TB/Harvati_Empirical/output/iid_exp/harvati_PCA_bothSexes_noHomopops_univBM_PCA100_c2.trees"))
+test_mcc <- (maxCladeCred(trees)) #maybe try greedy consensus again?
+
+greedyCT <- function(trees){
+  write.tree(trees, file = "gct_trees.txt")
+  system("/Applications/phylip-3.695/exe/consense")
+  system("gct_trees.txt")
+  
+}
+test_gct <- 
+plot(test_mcc)
+RF.dist(test_mcc, mol_tree)
+RF.dist(test_mcc, mol_tree_noNean)
+
+
+RF.dist(upgma(dist(traits_harvati[[2]])), mol_tree)
+mol_tree_noNean <- drop.tip(mol_tree, "Homo_neanderthalensis")
+RF.dist(upgma(dist(traits_harvati[[3]])), mol_tree_noNean)
 
 trees <- c(trees1, trees2)
 trees_hp <- c(trees1hp, trees2hp)
@@ -808,8 +830,13 @@ for(tree_ind in 1:length(parsTrees_names)){
     # df(); plot.cophylo(coph_plot)
     par(xpd=TRUE)
     
+    if(is.binary.phylo(spOnly)){
+      distance_betw_trees <- RF.dist(mol_tree, spOnly)
+    } else {
+      distance_betw_trees <- mean(RF.dist(mol_tree, resolveAllNodes(spOnly)))
+    }
     title("       Molecular                                          Morphological", cex.main = 3, line = -0.1)
-    title(paste0("RF-Distance = ", RF.dist(mol_tree, spOnly)), cex.main = 1.75, line = -1.2)
+    title(paste0("RF-Distance = ", distance_betw_trees), cex.main = 1.75, line = -1.2)
     
     dev.off()
   }
@@ -842,6 +869,9 @@ for(i in 1:1){
 tiplabs <- trees[[1]]$tip.label
 dev.off()
 mvBM_trees <- c(read.tree("output/harvati_noPCA_c1.trees"), read.tree("output/harvati_noPCA_c2.trees"))
+mvBM_trees <- c(read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_Females_noHomopops_uninfRM_PCA99_c1.trees"),
+                read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_Females_noHomopops_uninfRM_PCA99_c2.trees"))
+
 mk_trees_pca <- c(read.tree("output/harvati2004_mkModel_nohomopops_PCA_c1.trees"), read.tree("output/harvati2004_mkModel_nohomopops_PCA_c2.trees"))
 
 png(filename = "Documents/Harvati_Reanalysis_Manuscript/figures/figure2_compareTrees.png", width = 1080, height = 1080)
@@ -856,7 +886,7 @@ textsiz = 4
 par(mfrow =c(2,2))
 par(mar = c(5,5,5,5))
 # par(mfrow =c(2,2), mai=c(0.65,0.65,0.65,0.5), xpd = T)
-comparison_mvBM_Mol <- compareTrees(prop.part.df(tenk_trees_filtered), prop.part.df(mvBM_trees), tiplabs)
+comparison_mvBM_Mol <- compareTrees(prop.part.df(tenk_trees_filtered_noNean), prop.part.df(mvBM_trees), tiplabs)
 plot(comparison_mvBM_Mol, xlab = "molecular posterior probabilities", ylab = "morphological posterior probabilities", cex = ptsiz, cex.lab = labsiz, cex.axis = axsiz)
 abline(0, 1, lwd = lnsiz, lty = 2, col = "darkgrey")
 title(main = "mvBM vs. Molecular Compare-Trees Plot", cex.main = tsiz, line = 0.5)

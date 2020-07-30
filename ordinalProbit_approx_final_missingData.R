@@ -64,7 +64,7 @@ uniqueSP <- function(indivs){
 
 prunePCV <- function(treeCV){ 
   ntips <- dim(treeCV)[1]
-  contrast <- matrix(0, nrow = ntips-1, ncol = ntips); colnames(contrast) <- tree$tip.label
+  contrast <- matrix(0, nrow = ntips-1, ncol = ntips); colnames(contrast) <- colnames(treeCV)
   BLength <- rep(0, ntips - 1)
   
   traitTransforms <- matrix(0, nrow = 2 * ntips - 2, ncol = ntips)
@@ -312,8 +312,8 @@ getUniqueSitePatternsIgnoreImputed <- function(par_to_opt, dat){ #precompute uni
 
 logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may help with speedup
   vectorized <- T
-  univMeans <- F
-  univThresh <- F
+  univMeans <- T
+  univThresh <- T
   treeReg <- T
   mvBMreg <- F
   enforcePSD <- F
@@ -401,11 +401,8 @@ logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may h
     
     if(univMeans){
       ordinals <- as.data.frame(wtd.table(dat[dat$tip == mean_tip,mean_trait], weights = dat$nSP[dat$tip == mean_tip]))
-      logLL <- -sum(unlist(sapply(1:(nTaxa), function(tip) sum(log(multi_pmvnorm_optim_multithresh(mean = par_to_opt,
-                                                                                                   sigma = 1,
-                                                                                                   ordinals = as.numeric(as.character(ordinals[,1])),
-                                                                                                   thresholds = threshold_mat[mean_trait,]))) * 
-                                    as.numeric(as.character(ordinals[,2])))))    
+      stateProbs <- log(computeUnivNormalStateProbs(thresholds = threshold_mat[mean_trait,], mean = means[mean_tip, mean_trait]))
+      logLL <- -sum(stateProbs[as.integer(as.character(ordinals[,1])) + 1] * ordinals[,2])
       }
     
     if(!vectorized & !univMeans){
@@ -516,7 +513,7 @@ logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may h
     
   } else if(par_type == "corr"){
     cont_traits <- means[, c(tr1, tr2)]
-    corrs_threshes <- thresholds[c(tr1, tr2),]
+    corrs_threshes <- threshold_mat[c(tr1, tr2),]
     if(!vectorized){
       logLL <- -sum(unlist(sapply(1:nTaxa, function(tip) log(multi_pmvnorm_optim_multithresh(mean = cont_traits[tip,],
                                                                                              sigma = matrix(c(1,par_to_opt,par_to_opt,1),2,2),
@@ -563,11 +560,10 @@ logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may h
     
     if(univThresh){
       
-      logLL <- -sum(unlist(sapply(1:(nTaxa), function(tip) sum(log(multi_pmvnorm_optim_multithresh(mean = cont_traits_of_thresh[tip],
-                                                                                                   sigma = 1,
-                                                                                                   ordinals = as.integer(names(table(rep(dat[dat$tip == tip, thresh_trait], dat[dat$tip == tip, d_trait+1])))),
-                                                                                                   thresholds = threshold_mat[thresh_trait,])) * 
-                                    as.vector(table(rep(dat[dat$tip == tip, thresh_trait], dat[dat$tip == tip, d_trait+1])))))))
+      ordinals <- lapply(1:nTaxa, function(tip) as.data.frame(wtd.table(dat[dat$tip == tip, thresh_trait], weights = dat$nSP[dat$tip == tip])))
+      stateProbs <- lapply(1:nTaxa, function(tip) log(computeUnivNormalStateProbs(thresholds = threshold_mat[thresh_trait,], 
+                                                                                  mean = means[tip, thresh_trait])))
+      logLL <- -sum(sapply(1:nTaxa, function(tip) sum((stateProbs[[tip]][as.integer(as.character(ordinals[[tip]][,1]))+1]) * ordinals[[tip]][,2])))
       
       
     } else {
@@ -876,18 +872,162 @@ computeConditionalsLessObserved <- function(conditionals, observed, npop = NA, a
   }
 }
 
+approxMultinomialCond <- function(probs, obs_counts, total_count, min_sample_size = 10, raw = F, binomial_rescue = NA, mcmc_rescue = 5, mcmc_start_niter = 1E4,
+                                  mcmc_thin = 1E2, mcmc_burnin = 0.2, mcmc_swap_num_divisor = 5){
+  samps <- t(rmultinom(n = min_sample_size, size = total_count, prob = probs))
+  diffs <- t(sapply(1:nrow(samps), function(simsamp) samps[simsamp,] - obs_counts))
+  valid <- sapply(1:nrow(samps), function(simsamp) all(diffs[simsamp,] >= 0))
+  valid_diffs <- diffs[valid,]
+  needed_extra <- min_sample_size / sum(valid) * min_sample_size
+  order_mag_needed_extra <- 1
+  if(needed_extra == Inf){
+    needed_extra = 2^order_mag_needed_extra*min_sample_size
+    order_mag_needed_extra <- order_mag_needed_extra + 1
+  }
+  while(needed_extra > min_sample_size){
+    extra_samps <- t(rmultinom(n = needed_extra, size = total_count, prob = probs))
+    extra_diffs <- t(sapply(1:nrow(extra_samps), function(simsamp) extra_samps[simsamp,] - obs_counts))
+    extra_valid <- sapply(1:nrow(extra_samps), function(simsamp) all(extra_diffs[simsamp,] >= 0))
+    valid_diffs <- rbind(valid_diffs, extra_diffs[extra_valid,])
+    valid <- sum(extra_valid, valid)
+    needed_extra <- min_sample_size / valid * min_sample_size
+    if(needed_extra == Inf){
+      needed_extra = 2^order_mag_needed_extra*min_sample_size
+      order_mag_needed_extra <- order_mag_needed_extra + 1
+      if(!is.na(binomial_rescue)){
+        if(order_mag_needed_extra > binomial_rescue){
+          print("unable to approximate multinomial probability -- resorting to binomial probability")
+          ntraits <- length(probs)
+          exp_extras <- sapply(1:ntraits, function(marg_ind)
+            sum(diff(pbinom(q = obs_counts[marg_ind]:(total_count-sum(obs_counts[-marg_ind])), size = total_count, prob = probs[marg_ind])) * 1:(total_count-sum(obs_counts)))
+          )
+          if(!raw){return(exp_extras / sum(exp_extras))} else{
+            return(t(sapply(1:min_sample_size, function(foo) exp_extras)))
+          }
+        }
+      }
+      if(!is.na(mcmc_rescue)){
+        if(order_mag_needed_extra > mcmc_rescue){
+          print("unable to approximate multinomial probability via monte carlo simulation -- resorting to ~markov chain~ monte carlo simulation")
+          exp_extras <- approxMultinomialCondMCMC(probs = probs, obs_counts = obs_counts, total_count = total_count, 
+                                                  min_ess = min_sample_size, start_niter = mcmc_start_niter, thin = mcmc_thin, burnin = mcmc_burnin, exp_count = raw,
+                                                  swap_num_divisor = mcmc_swap_num_divisor)
+          if(raw){return(exp_extras)} else{
+            return(apply(exp_extras, 2, mean))
+          }
+        }
+      }
+      
+      
+    }
+  }
+  
+  #approximate the probabilities of the remaining, unobserved categories
+  if(!raw){
+    cond_probs <- apply(valid_diffs, 2, sum)
+    cond_probs <- cond_probs / sum(cond_probs) 
+    return(cond_probs)
+  } else {
+    if(class(valid_diffs) == "matrix"){
+      return(valid_diffs[1:min_sample_size,])
+    } else {
+      return(valid_diffs)
+    }
+  }
+}
+
+approxMultinomialCondMCMC <- function(probs, obs_counts, total_count, min_ess = 100, start_niter = 1E5, thin = 1E1, burnin = 0.2, exp_count = T, samples = T, swap_num_divisor = 5){
+  ntraits <- length(probs)
+  size_obs <- sum(obs_counts)
+  samp_counts <- matrix(0, nrow = start_niter / thin, ncol = ntraits)
+  curr_state <- obs_counts + t(rmultinom(n = 1, size = total_count - size_obs, prob = probs))
+  curr_prob <- dmultinom(curr_state, prob = probs, log = T)
+  accept_count <- 0
+  for(i in 1:start_niter){
+    # if(i %% thin_print == 0){cat(paste0(i / thin_print, " "))}
+    amount_to_swap <- sample(size = 1, 1:floor((total_count - size_obs)/swap_num_divisor))
+    inds_to_swap <- sample(size = 2, 1:ntraits, replace = F)
+    prop_state <- curr_state
+    prop_state[inds_to_swap[1]] <- prop_state[inds_to_swap[1]] + amount_to_swap
+    prop_state[inds_to_swap[2]] <- prop_state[inds_to_swap[2]] - amount_to_swap
+    if(all(prop_state >= obs_counts)){
+      prop_prob <- dmultinom(prop_state, prob = probs, log = T)
+      if(exp(prop_prob - curr_prob) > runif(1,0,1)){
+        curr_state <- prop_state
+        curr_prob <- prop_prob
+        accept_count <- accept_count + 1
+      }
+    }# else {prop_prob <- -Inf} ...implied
+    
+    if(i %% thin == 0){
+      samp_counts[i/thin,] <- curr_state
+    }
+  }
+  samp_counts <- samp_counts[ceiling(burnin*nrow(samp_counts)):nrow(samp_counts),]
+  diff_counts <- t(sapply(1:nrow(samp_counts), function(count) samp_counts[count,] - obs_counts))
+  ess <- coda::effectiveSize(diff_counts[,apply(diff_counts,2,sum) != 0])
+  if(all(ess > min_ess)){
+    if(exp_count){
+      if(samples){
+        return(diff_counts)
+      } else {
+        return(apply(diff_counts, 2, mean))
+      }
+    } else {
+      est_cond_probs <- apply(diff_counts, 2, mean)
+      return(est_cond_probs / sum(est_cond_probs))
+    }
+  } else {
+    while(min(ess) < min_ess){
+      followup_niter <- floor((min_ess / min(ess)) * start_niter)
+      followup_samp_counts <- matrix(0, nrow = floor(followup_niter / thin), ncol = ntraits)
+      for(i in 1:followup_niter){
+        amount_to_swap <- sample(size = 1, 1:floor((total_count - size_obs)/swap_num_divisor))
+        inds_to_swap <- sample(size = 2, 1:ntraits, replace = F)
+        prop_state <- curr_state
+        prop_state[inds_to_swap[1]] <- prop_state[inds_to_swap[1]] + amount_to_swap
+        prop_state[inds_to_swap[2]] <- prop_state[inds_to_swap[2]] - amount_to_swap
+        if(all(prop_state >= obs_counts)){
+          prop_prob <- dmultinom(prop_state, prob = probs, log = T)
+          if(exp(prop_prob - curr_prob) > runif(1,0,1)){
+            curr_state <- prop_state
+            curr_prob <- prop_prob
+          }
+        }
+        if(i %% thin == 0){
+          followup_samp_counts[i/thin,] <- curr_state
+        }
+      }
+      followup_diff_counts <- t(sapply(1:nrow(followup_samp_counts), function(count) followup_samp_counts[count,] - obs_counts))
+      diff_counts <- rbind(diff_counts, followup_diff_counts)
+      ess <- coda::effectiveSize(diff_counts[,apply(diff_counts,2,sum) != 0])
+    }
+    if(exp_count){
+      if(samples){
+        return(diff_counts)
+      } else {
+        return(apply(diff_counts, 2, mean))
+      }
+    } else {
+      est_cond_probs <- apply(diff_counts, 2, mean)
+      return(est_cond_probs / sum(est_cond_probs))
+    }
+  }
+}
+
+
 #first let's resimulate data
 nrounds <- 16
-nTaxa <- 20
-d_traits <- 100
+nTaxa <- 8
+d_traits <- 20
 useIdentity <- F
 n_sub_matrices <- 1
-n_indiv <- sample(500:1000, nTaxa, replace = T)
+n_indiv <- sample(50:200, nTaxa, replace = T)
 n_thresholds <- sample(2:6, d_traits, T) #for variable numbers of thresholds, just need to buffer with 'Inf's on the right
 weighPCV <- F
 MCAR <- F #missing data is coded with state '9'
 ignoreImputedData <- F
-nrounds_to_not_impute <- 3
+nrounds_to_not_impute <- 4
 stochastic_imputation <- T
 MNAR_Imputation <- T
 updateAllAtOnce <- T #impute each missing value as you iterate through them, or all at once at the end?
@@ -900,12 +1040,15 @@ use_imputed_data_for_corrs <- F
 useUPGMA <- T
 use_univariate_normals_for_conditionals <- T
 use_observed_numerator_ALL_conditionals_denominator <- T
+use_conditional_multinomial_approx <- T
 add_individuals_to_missing <- F
 adjust_conds_at_pop_level <- F
+use_conditional_expectation <- F
 
-missing_base_prob <- 0.6
+
+missing_base_prob <- 0.3
 missing_base_state <- 2
-per_state_logit_incr <- 0.75
+per_state_logit_incr <- 0.5
 logit_scale_pts <- -(cumsum(rep(per_state_logit_incr, max(n_thresholds + 1))) - missing_base_state * per_state_logit_incr - logit(missing_base_prob))
 # logit_scale_pts <- runif(-2,2, n = max(n_thresholds + 1))
 
@@ -976,7 +1119,7 @@ if(MCAR){
   }
 } else {
   for(tip in 1:nTaxa){
-    probs_miss <- (logit_scale_pts[as.vector(traits_indiv_discr[[tip]]) + 1] - logit_scale_pts[missing_base_state+1]) + logit(missing_base_prob)
+    probs_miss <- logit_scale_pts[as.vector(traits_indiv_discr[[tip]]) + 1]
     probs_miss <- invlogit(probs_miss)
     cbind(as.vector(traits_indiv_discr[[tip]]), probs_miss)
     print(table(probs_miss))
@@ -1180,22 +1323,22 @@ if(!ignoreImputedData){
     imputed_probs[[tip]] <- list(missing, missing_scores)
   }
   
-  if(MNAR_Imputation){
-    
-    maxStates <- max(n_thresholds) + 1
-    
-    n_obs_trait_state_per_tip <- lapply(1:length(obs), function(tip)
-      t(sapply(1:ncol(obs[[tip]]), function(trait) countObsStates(traits_indiv_discr[[tip]][obs[[tip]][,trait],trait], maxStates = maxStates))
-      )
-    )
-    
-    n_imputed_trait_state_per_tip <- lapply(1:length(imputed_probs), function(tip)
-      countUnobsStates(imputed_probs[[tip]][[1]][,2], imputed_probs[[tip]][[2]], maxStates = maxStates, ntraits = d_traits)
-    )
-    
-    trait_specific_missing_probs <- find_missing_probs(n_obs_trait_state_per_tip, n_imputed_trait_state_per_tip, per_pop = F, raw = F)
-    
-  }
+  # if(MNAR_Imputation){
+  #   
+  #   maxStates <- max(n_thresholds) + 1
+  #   
+  #   n_obs_trait_state_per_tip <- lapply(1:length(obs), function(tip)
+  #     t(sapply(1:ncol(obs[[tip]]), function(trait) countObsStates(traits_indiv_discr[[tip]][obs[[tip]][,trait],trait], maxStates = maxStates))
+  #     )
+  #   )
+  #   
+  #   n_imputed_trait_state_per_tip <- lapply(1:length(imputed_probs), function(tip)
+  #     countUnobsStates(imputed_probs[[tip]][[1]][,2], imputed_probs[[tip]][[2]], maxStates = maxStates, ntraits = d_traits)
+  #   )
+  #   
+  #   trait_specific_missing_probs <- find_missing_probs(n_obs_trait_state_per_tip, n_imputed_trait_state_per_tip, per_pop = F, raw = F)
+  #   
+  # }
   
   if(updateAllAtOnce){
     for(tip in 1:length(obs)){
@@ -1250,7 +1393,8 @@ par_to_opt_ind <- nTaxa*d_traits+2+choose(d_traits, 2) + 0:(max_thresholds_count
 par_to_opt_ind <- par_to_opt_ind[1:(n_thresholds[thresh_trait_ind]-1)]
 # par <- c(c(t(traits)), 10, R[upper.tri(R)], c(threshold_diffs_init)) #try using true par values to check for good behavior
 # par_to_opt_ind <- length(par) + c(-1,0)
-# par_to_opt_ind <- 5 #mean
+par_to_opt_ind <- 5 #mean
+# par_to_opt_ind <- (nTaxa * d_traits + 2) #correlation
 par_to_opt <- par[par_to_opt_ind]
 type_of_param <- ifelse(par_to_opt_ind[1] <= nTaxa * d_traits, "m", 
                         ifelse(par_to_opt_ind[1] == (nTaxa * d_traits + 1), "v",
@@ -1278,6 +1422,20 @@ if(!fast){
   optim_out$par
   threshold_diffs[,thresh_trait_ind]
 }
+
+
+################################################################################
+################################################################################
+################################################################################
+
+############################ Start Inference Here ##############################
+
+################################################################################
+################################################################################
+################################################################################
+
+
+
 
 tic()
 ncore <- 1; mclapply_over_foreach <- T;
@@ -1328,8 +1486,8 @@ for(i in 1:nrounds){
         uniqueSitePats <- getUniqueSitePatternsIgnoreImputed(par_to_opt, dat9)
       }
       dat <- list(dat_orig, k_par, prunes_init, rownames(traits), n_thresh, uniqueSitePats) 
-      upper = c(rep(Inf, nTaxa * d_traits + 1), rep(0.99, choose(d_traits, 2)), rep(Inf, (max_thresholds_count-1) * d_traits), c(Inf, Inf))[par_to_opt_ind]
-      lower = c(rep(-Inf, nTaxa * d_traits), 0.01, rep(-0.99, choose(d_traits, 2)), rep(0, (max_thresholds_count-1) * d_traits), c(-Inf, 0))[par_to_opt_ind]
+      upper = c(rep(Inf, nTaxa * d_traits + 1), rep(0.9, choose(d_traits, 2)), rep(Inf, (max_thresholds_count-1) * d_traits), c(Inf, Inf))[par_to_opt_ind]
+      lower = c(rep(-Inf, nTaxa * d_traits), 0.01, rep(-0.9, choose(d_traits, 2)), rep(0, (max_thresholds_count-1) * d_traits), c(-Inf, 0))[par_to_opt_ind]
       optim_out <- optim(par = par_to_opt, logLL_bivProb_optim_multithresh, dat = dat, method = method, control = list(trace = 0, REPORT = 1),
                          upper = upper, lower = lower)
       if(length(par_to_opt_ind) > 1){
@@ -1431,6 +1589,7 @@ for(i in 1:nrounds){
   ############################
   if(!ignoreImputedData){
     #iterate over each missing value and substitute in its likeliest state
+    current_params <- list(means = traits, cor = R, threshold_mat = thresholds) #for debugging
     current_params <- recompileMeansCorrsThreshes(par, dat)
     imputed_probs <- obs
     for(tip in 1:length(obs)){
@@ -1474,6 +1633,12 @@ for(i in 1:nrounds){
       if(!use_conditional_probs_for_observed_data){
         n_obs_trait_state_per_tip <- lapply(1:length(obs), function(tip)
           t(sapply(1:ncol(obs[[tip]]), function(trait) countObsStates(traits_indiv_discr[[tip]][obs[[tip]][,trait],trait], maxStates = maxStates))
+          )
+        )
+        
+        #for debugging purposes
+        n_unobs_trait_state_per_tip <- lapply(1:length(obs), function(tip)
+          t(sapply(1:ncol(obs[[tip]]), function(trait) countObsStates(traits_indiv_discr_true[[tip]][!obs[[tip]][,trait],trait], maxStates = maxStates))
           )
         )
         
@@ -1536,9 +1701,26 @@ for(i in 1:nrounds){
         if(use_univariate_normals_for_conditionals){
           #TODO perform univariate estimation of all conditional frequencies
           
-          conditional_distribution_per_tip <- lapply(1:length(obs), function(tip) t(sapply(1:ncol(current_params$means), function(trait)
+          conditional_expectation_per_tip <- lapply(1:length(obs), function(tip) t(sapply(1:ncol(current_params$means), function(trait)
               computeUnivNormalStateProbs(mean = current_params$means[tip, trait], thresholds = current_params$threshold_mat[trait,], npop = nrow(obs[[tip]])))
             ))
+          
+          conditional_probs_per_tip <- lapply(1:length(obs), function(tip) t(sapply(1:ncol(current_params$means), function(trait)
+            computeUnivNormalStateProbs(mean = current_params$means[tip, trait], thresholds = current_params$threshold_mat[trait,]))
+          ))
+          
+          if(use_conditional_multinomial_approx){
+            
+            conditionals_less_observed <-  lapply(1:length(obs), function(tip) t(sapply(1:ncol(current_params$means), function(trait)
+              apply(approxMultinomialCond(probs = conditional_probs_per_tip[[tip]][trait,], obs_counts = n_obs_trait_state_per_tip[[tip]][trait,], 
+                                          total_count = nrow(obs[[tip]]), min_sample_size = 500, raw = T, mcmc_rescue = 5), 2, mean)
+            )))
+            
+          } else if(use_conditional_expectation){
+            
+            conditional_distribution_per_tip <- conditional_expectation_per_tip
+          
+          }
           
         } else{
           
@@ -1555,16 +1737,19 @@ for(i in 1:nrounds){
       
       if(use_observed_numerator_ALL_conditionals_denominator){
         
-        conditionals_less_observed <- lapply(1:length(obs), function(tip)
-          computeConditionalsLessObserved(conditionals = conditional_distribution_per_tip[[tip]], observed = n_obs_trait_state_per_tip[[tip]], 
-                                          npop = ifelse(adjust_conds_at_pop_level, nrow(obs[[tip]]), NA), addPop = add_individuals_to_missing)
-        )
-        
+        if(!use_conditional_multinomial_approx){
+          conditionals_less_observed <- lapply(1:length(obs), function(tip)
+            computeConditionalsLessObserved(conditionals = conditional_distribution_per_tip[[tip]], observed = n_obs_trait_state_per_tip[[tip]], 
+                                            npop = ifelse(adjust_conds_at_pop_level, nrow(obs[[tip]]), NA), addPop = add_individuals_to_missing)
+          )
+        }
         trait_specific_missing_probs <- find_missing_probs(n_obs_trait_state_per_tip, conditionals_less_observed, per_pop = F, raw = F, per_trait = T)
         print("estimated missing probs:")
-        print(find_missing_probs(n_obs_trait_state_per_tip, conditionals_less_observed, per_pop = F, raw = F, per_trait = F))
+        print(find_missing_probs(n_obs_trait_state_per_tip, conditionals_less_observed, per_pop = F, raw = T, per_trait = F))
         print("true missing probs:")
         print(invlogit(logit_scale_pts))
+        print("empirical ~known~ missing probs:")
+        print(find_missing_probs(n_obs_trait_state_per_tip, n_unobs_trait_state_per_tip, per_pop = F, raw = T, per_trait = F))
         
       } else {
         
@@ -1647,8 +1832,9 @@ thresholds_est <- t(sapply(1:nrow(thresholds_est), function(trait) cumsum(thresh
 par(mfrow = c(2,3))
 label_size <- 1.5
 title_size <- 2
-plot(init_means, traits, main = paste0("r = ", round(cor(c(traits), c(init_means)), 3)), cex.main = title_size, cex.lab = label_size, xlab = "Initialized Means", ylab = "True Means"); abline(0,1)
-plot(init_cor[upper.tri(R)], R[upper.tri(R)], xlim = c(-1,1), ylim = c(-1,1), xlab = "Pearson's 'r's", ylab = "True Correlations",
+plot(init_means, traits, main = paste0("r = ", round(cor(c(traits), c(init_means)), 3)), cex.main = title_size, col = rgb(0,0,0,min(1, 1 / length(init_means) * 100)),
+     cex.lab = label_size, xlab = "Initialized Means", ylab = "True Means"); abline(0,1)
+plot(init_cor[upper.tri(R)], R[upper.tri(R)], xlim = c(-1,1), ylim = c(-1,1), xlab = "Pearson's 'r's", ylab = "True Correlations", col = rgb(0,0,0,min(1,1 / sum(upper.tri(init_cor)) * 100)),
      main = paste0("r = ", round(cor(c(R[upper.tri(R)]), c(init_cor[upper.tri(R)])), 3)), cex.lab = label_size, cex.main = title_size); abline(0,1)
 # plot.new()
 
@@ -1662,9 +1848,9 @@ points(x = row_i, y = col_j, col = cols[round(as.vector(diffs_R_nearPD) * 100 + 
 plotrix::color.legend( xl = 1, xr = dim(R_est)[1], yb = dim(R_est)[2] * 1.02, yt = dim(R_est)[2] * 1.04 , legend = 1:3-2 , gradient="x", rect.col=cols)
 title("nearPD() Forcing")
 plot(est_means, traits, main = paste0("r = ", round(cor(c(traits), c(est_means)), 3)), 
-     cex.lab = label_size, xlab = "Estimated Means", ylab = "True Means", cex.main = title_size); abline(0,1)
+     cex.lab = label_size, xlab = "Estimated Means", ylab = "True Means", cex.main = title_size, col = rgb(0,0,0,min(1, 1 / length(est_means) * 100))); abline(0,1)
 plot(R_est[upper.tri(R)], R[upper.tri(R)], xlim = c(-1,1), ylim = c(-1,1), xlab = "Estimated Correlations", ylab = "True Correlations",
-     main = paste0("r = ", round(cor(c(R[upper.tri(R)]), c(R_est[upper.tri(R)])), 3)), cex.lab = label_size, cex.main = title_size); abline(0,1)
+     main = paste0("r = ", round(cor(c(R[upper.tri(R)]), c(R_est[upper.tri(R)])), 3)), cex.lab = label_size, cex.main = title_size, col = rgb(0,0,0,min(1 / sum(upper.tri(R_est)) * 100, 1))); abline(0,1)
 # plot(R_est[upper.tri(R)], R[upper.tri(R)], xlim = c(-1,1), ylim = c(-1,1), xlab = "estimated raw correlations", ylab = "true correlations",
 #      main = paste0("r = ", round(cor(c(R[upper.tri(R)]), c(R_est_raw[upper.tri(R)])), 3))); abline(0,1)
 
