@@ -921,12 +921,15 @@ choleskalator <- function(mat, ind){
     return(cbind(rbind(ind_removed, rep(0,dim-1)), URn_target_sle))
   }
 }
-blooming_onion_tune_chol <- function (upper_cholesky_factor, ind, varN = 0.1, betaWindow = NA) {
+blooming_onion_tune_chol <- function (upper_cholesky_factor, ind, varN = 0.1, betaWindow = NA, returnInOrder = T) {
   redrawBeta <- ifelse(!is.na(betaWindow), T, F)
   d <- dim(upper_cholesky_factor)[1]
   m <- d-1
   R <- matrix(0, d, d)
   chol_cor <- choleskalator(upper_cholesky_factor, ind)
+  orig_order <- 1:d
+  new_order <- c(orig_order[-ind], ind)
+  
   R[1:m, 1:m] <- chol_cor[1:m,1:m]
   target_chol <- chol_cor[1:d,d]
   target_y <- 1 - (target_chol[d]^2)
@@ -969,9 +972,27 @@ blooming_onion_tune_chol <- function (upper_cholesky_factor, ind, varN = 0.1, be
       
       log_prop_ratio <- log(abs(1 / beta_subprob_rev)) - log(abs(1 / beta_subprob)) 
       
+      # does the symmetry argument for the forward and backward unit hypersphere sampling hold? not sure...
+      # n_integs <- 1E2
+      # range_of_integration <- seq(from = 0, to = sqrt(varN)*5, length.out = n_integs)[-1]
+      # length_of_integration <- diff(range_of_integration[1:2])
+      # # log_prop_ratio_normals_for <- log(sum(sapply(range_of_integration, function(multiplier) prod(dnorm(z*multiplier, target_z, sqrt(varN), log = F))))*length_of_integration)
+      # ## log_prop_ratio_normals_for <- log(sum(dnorm(x = as.vector(t(t(t(range_of_integration)) %*% t(z))), mean =  rep(target_z, n_integs-1), sd =  sqrt(varN), log = F))*length_of_integration)
+      # # log_prop_ratio_normals_rev <- log(sum(sapply(range_of_integration, function(multiplier) prod(dnorm(target_z*multiplier, z, sqrt(varN), log = F))))*length_of_integration)
+      # ## log_prop_ratio_normals_rev <- log(sum(dnorm(x = as.vector(t(t(t(range_of_integration)) %*% t(target_z))), mean =  rep(z, n_integs-1), sd =  sqrt(varN), log = F))*length_of_integration)
+      # log_prop_ratio_normals <- log_prop_ratio_normals_rev - log_prop_ratio_normals_for
+      # log_prop_ratio <- log_prop_ratio + log_prop_ratio_normals
+      # yes it does!! woot woot
+      
     }
   } else {
     log_prop_ratio <- 0
+  }
+  
+  if(returnInOrder){
+    for(ind_rev in rep(ind, (d-ind))){
+      R <- choleskalator(R, ind_rev)
+    }
   }
   
   return(list(sample = R, log_prop_ratio = log_prop_ratio))
@@ -984,20 +1005,20 @@ blooming_onion_tune_chol <- function (upper_cholesky_factor, ind, varN = 0.1, be
 #                blooming_onion_tune_clean(cor = cormat, varN = 0.1, betaWindow = 0.1))
 
 
-dim <- 46
-target_corr <- rlkj(dim)
+dim <- 10
+target_corr <- rlkj(dim, eta = 1)
 true_corrs <- target_corr[upper.tri(target_corr)]
-n_obs <- 10
-varN <- 0.5
-betaWindow <- 0.2
-sampleUniform <- T
+n_obs <- 50
+varN <- 0.01
+betaWindow <- 0.05
+sampleUniform <- F
 obs <- rmvnorm(n = n_obs, mean = rep(0, dim), sigma = target_corr)
 emp_corrs <- cor(obs)[upper.tri(diag(dim))]
 par(mfrow = c(ifelse(dim < 5, choose(dim, 2), 4), 2))
 
 corr_init <- chol(rlkj(dim))
-n_iter <- 2.5E6
-thin <- 1E2
+n_iter <- 5E6
+thin <- 1E3
 n_out <- round(n_iter/thin)
 
 corr_mats <- replicate(n_out, diag(dim))
@@ -1017,16 +1038,17 @@ for(i in 2:n_iter){
   #propose a move
   ind_to_prop <- sample(1:dim, 1)
   inds_prop <- c(inds_curr[-ind_to_prop], inds_curr[ind_to_prop])
-  corr_prop_rat <- blooming_onion_tune_chol(corr_curr, ind = ind_to_prop, varN = varN, betaWindow = betaWindow)
+  corr_prop_rat <- blooming_onion_tune_chol(upper_cholesky_factor = corr_curr, ind = ind_to_prop, varN = varN, betaWindow = betaWindow, returnInOrder = F)
   corr_prop <- corr_prop_rat$sample
   log_prop_ratio <-  corr_prop_rat$log_prop_ratio
+  (t(corr_prop) %*% corr_prop)[ind_to_prop,] - (t(corr_curr) %*% corr_curr)[ind_to_prop,]
   
   #compute ratio of target densities
   if(sampleUniform){
     log_dens_ratio <- 0 
   } else {
-    log_dens_ratio <- sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = t(corr_prop) %*% corr_prop, log = T)) - 
-      sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = t(corr_curr) %*% corr_curr, log = T))
+    log_dens_ratio <- sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = (t(corr_prop) %*% corr_prop)[inds_prop,inds_prop], log = T)) - 
+      sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = (t(corr_curr) %*% corr_curr)[inds_curr,inds_curr], log = T))
   }
   
   #accept or reject
@@ -1045,18 +1067,16 @@ for(i in 2:n_iter){
   
 }
 
+
+
 corr_mats <- sapply(1:n_out, function(x) (t(corr_mats[,,x]) %*% corr_mats[,,x])[inds[,x],inds[,x]], simplify = "array")
+# corr_mats <- sapply(1:n_out, function(x) (t(corr_mats[,,x]) %*% corr_mats[,,x]), simplify = "array")
 
 corrs <- sapply(1:n_out, function(x) corr_mats[,,x][upper.tri(diag(dim))])
 ind_mat <- matrix(1:dim^2, dim, dim)
 target_ind_mat <- ind_mat[upper.tri(ind_mat)]
 ind_mat <- t(sapply(1:choose(dim, 2), function(x) which(ind_mat == target_ind_mat[x], arr.ind = T)))
-for(i in 1:choose(dim, 2)){
-  hist(corrs[i,][(n_out / 5) : n_out], breaks = 1E2, main = paste0("correlation betw. trait ", ind_mat[i,1], " and trait ", ind_mat[i,2]));
-  if(i == 1){legend(x = "topright", lwd = 2, legend = c("true value", "observed value"), col = c("red", "purple"))}
-  abline(v = true_corrs[i], col = 2, lwd = 2); abline(v = emp_corrs[i], col = "purple", lwd = 2)
-  plot(corrs[i,], type = "l"); lines(corrs[i,][1:(n_out/5)], col = "grey"); abline(h = true_corrs[i], col = 2, lwd = 2); abline(h = emp_corrs[i], col = "purple", lwd = 2)
-}
+par(mfrow = c(3, 2))
 for(i in 1:choose(dim, 2)){
   hist(corrs[i,][(n_out / 5) : n_out], breaks = 1E2, main = paste0("correlation betw. trait ", ind_mat[i,1], " and trait ", ind_mat[i,2]), xlim = c(-1,1));
   if(i == 1){legend(x = "topright", lwd = 2, legend = c("true value", "observed value"), col = c("red", "purple"))}
@@ -1093,3 +1113,57 @@ if(sampleUniform){
 }
 
 paste0("acceptance ratio = ", n_accept / n_iter)
+
+###################################################
+# compare to a 1-off sliding window move proposal #
+###################################################
+
+# corr_init <- chol(rlkj(dim))
+# n_iter <- 5E5
+# thin <- 1E2
+# n_out <- round(n_iter/thin)
+# 
+# corr_mats <- replicate(n_out, diag(dim))
+# corr_mats[,,1] <- corr_curr <-  corr_init
+# 
+# inds_init <- 1:dim
+# inds <- replicate(n_out, rep(0,dim))
+# inds[,1] <- inds_curr <-  inds_init
+# 
+# n_accept <- 0
+# for(i in 2:n_iter){
+#   
+#   #progress bar
+#   if(i %% (n_iter / 10) == 0){cat(paste0(i / n_iter * 100, "%  "))}
+#   
+#   #propose a move
+#   ind_to_prop <- sample(1:dim, 2, replace = F)
+#   inds_prop <- c(inds_curr[-ind_to_prop], inds_curr[ind_to_prop])
+#   corr_prop_rat <- blooming_onion_tune_chol(upper_cholesky_factor = corr_curr, ind = ind_to_prop, varN = varN, betaWindow = betaWindow)
+#   corr_prop <- corr_prop_rat$sample
+#   log_prop_ratio <-  corr_prop_rat$log_prop_ratio
+#   (t(corr_prop) %*% corr_prop)[ind_to_prop,] - (t(corr_curr) %*% corr_curr)[ind_to_prop,]
+#   
+#   #compute ratio of target densities
+#   if(sampleUniform){
+#     log_dens_ratio <- 0 
+#   } else {
+#     log_dens_ratio <- sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = t(corr_prop) %*% corr_prop, log = T)) - 
+#       sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = t(corr_curr) %*% corr_curr, log = T))
+#   }
+#   
+#   #accept or reject
+#   log_accept_prob <- log_prop_ratio + log_dens_ratio
+#   if(log(runif(1, 0, 1)) < log_accept_prob){
+#     corr_curr <- corr_prop
+#     inds_curr <- inds_prop
+#     n_accept <- n_accept + 1
+#   } 
+#   
+#   #record given thinning 
+#   if(i %% thin == 0){
+#     corr_mats[,,i/thin] <- corr_curr
+#     inds[,i/thin] <- inds_curr
+#   }
+#   
+# }

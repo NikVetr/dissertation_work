@@ -15,6 +15,351 @@ library(questionr)
 library(tictoc)
 library(gtools)
 
+
+logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may help with speedup
+  regularizeViaLKJ <- T; beta_corr_eta <- 1
+  weaken_beta_informativeness_by <- 3
+  vectorized <- T
+  univMeans <- T
+  univThresh <- T
+  treeReg <- T
+  mvBMreg <- F
+  enforcePSD <- F
+  if(vectorized & length(dat) >= 6){
+    uniqueSitePatterns_precomp <- dat[[6]]
+  }
+  n_thresh <- dat[[5]]
+  tipNames <- dat[[4]]
+  prunes <- dat[[3]]
+  k_par <- dat[[2]]
+  dat <- dat[[1]]
+  par_to_opt_ind <- which(is.na(k_par))
+  par <- k_par
+  par[par_to_opt_ind] <- par_to_opt
+  
+  hb <- length(par)
+  nTaxa <- length(unique(dat$tip))
+  d_trait <- ncol(dat) - 2
+  
+  cor <- diag(d_trait)
+  cor[upper.tri(cor)] <- k_par[(nTaxa*d_trait+2) : (nTaxa*d_trait+1+choose(d_trait, 2))];
+  reg <- par[nTaxa * d_trait + 1]
+  means <- matrix(par[1:(nTaxa*d_trait)], ncol = d_trait, nrow = nTaxa, byrow = T)
+  rownames(means) <- tipNames
+  threshold_mat <- cbind(rep(0, d_trait), matrix(par[(nTaxa*d_trait+2+choose(d_trait, 2)) : ((nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1))], nrow = d_trait, ncol = n_thresh[1]-1))
+  
+  #for lognormal regularization
+  # thresh_reg_mu <- par[(nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1) + 1]
+  # thresh_reg_sd <- par[(nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1) + 2]
+  
+  #for exponential regularization
+  lambda <- par[(nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1) + 1]
+  
+  if(length(par_to_opt_ind) == "1"){
+    if(par_to_opt_ind > 0 & par_to_opt_ind <= (nTaxa * d_trait)){
+      par_type <- "mean"
+      mean_trait <- par_to_opt_ind %% d_trait
+      if(mean_trait == 0){
+        mean_trait <- d_trait
+      }
+      mean_tip <- ceiling(par_to_opt_ind / d_trait)
+    } else if (par_to_opt_ind == (nTaxa * d_trait + 1)){
+      par_type = "reg"  
+    } else if (par_to_opt_ind >= (nTaxa*d_trait+2) & par_to_opt_ind <= (nTaxa*d_trait+1+choose(d_trait, 2))){
+      par_type = "corr"
+      trs <- which(is.na(cor), arr.ind = T)
+      tr1 = trs[1]
+      tr2 = trs[2]
+      cor[tr1, tr2] <- par_to_opt
+    } else if(par_to_opt_ind > (nTaxa*d_trait+1+choose(d_trait, 2)) & par_to_opt_ind <= ((nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1))){
+      par_type <- "thresh"
+      threshold_mat_unknown <- cbind(rep(0, d_trait), matrix(k_par[(nTaxa*d_trait+2+choose(d_trait, 2)) : ((nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1))], nrow = d_trait, ncol = n_thresh[1]-1))
+      thresh_trait <- which(is.na(threshold_mat_unknown), arr.ind = T)
+      thresh_ind <- thresh_trait[2]
+      thresh_trait <- thresh_trait[1]
+      
+    }
+  } else if(all(par_to_opt_ind > (nTaxa*d_trait+1+choose(d_trait, 2)) & par_to_opt_ind <= ((nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1)))){
+    par_type <- "thresh"
+    threshold_mat_unknown <- cbind(rep(0, d_trait), matrix(k_par[(nTaxa*d_trait+2+choose(d_trait, 2)) : ((nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1))], nrow = d_trait, ncol = n_thresh[1]-1))
+    thresh_trait <- which(is.na(threshold_mat_unknown), arr.ind = T)
+    thresh_ind <- thresh_trait[,2]
+    thresh_trait <- thresh_trait[1,1]
+  }
+  
+  if(length(intersect(par_to_opt_ind, (((nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1)) + c(1,2)))) > 0){
+    par_type <- "thresh_reg"
+  }
+  
+  cor <- cor + t(cor) - diag(d_trait)
+  threshold_mat <- t(sapply(1:nrow(threshold_mat), function(trait) cumsum(threshold_mat[trait,])))
+  
+  # psd_cor <- cov2cor(as.matrix(nearPD(cor)$mat))
+  if(enforcePSD & par_type == "corr"){
+    if(!is.positive.definite(cor)){
+      return(1E100)
+    }
+  }
+  
+  if(par_type == "mean"){
+    #check biv dens of trait mean with all others traits for that tip
+    
+    cont_traits_of_tip <- means[mean_tip, -mean_trait]
+    corrs_of_trait <- cor[mean_trait, -mean_trait]
+    threshs_of_other_traits <- threshold_mat[-mean_trait,]
+    
+    if(univMeans){
+      ordinals <- as.data.frame(wtd.table(dat[dat$tip == mean_tip,mean_trait], weights = dat$nSP[dat$tip == mean_tip]))
+      stateProbs <- log(computeUnivNormalStateProbs(thresholds = threshold_mat[mean_trait,], mean = means[mean_tip, mean_trait]))
+      logLL <- -sum(stateProbs[as.integer(as.character(ordinals[,1])) + 1] * ordinals[,2])
+    }
+    
+    if(!vectorized & !univMeans){
+      
+      logLL <- -sum(unlist(sapply(1:(d_trait-1), function(trait) log(multi_pmvnorm_optim_multithresh(mean = c(par_to_opt, cont_traits_of_tip[trait]),
+                                                                                                     sigma = matrix(c(1,corrs_of_trait[trait],corrs_of_trait[trait],1),2,2),
+                                                                                                     ordinals = uniqueSP_redux(dat[dat$tip == mean_tip, c(mean_trait, (1:d_trait)[-mean_trait][trait])], dat[dat$tip == mean_tip,d_trait+1])$SPs,
+                                                                                                     thresholds = rbind(threshold_mat[mean_trait,], threshs_of_other_traits[trait,]))) * 
+                                    uniqueSP_redux(dat[dat$tip == mean_tip, c(mean_trait, (1:d_trait)[-mean_trait][trait])], dat[dat$tip == mean_tip,d_trait+1])$counts)))
+    } else if(vectorized & !univMeans){ ## alternatively, in vectorized form
+      
+      if(!exists("uniqueSitePatterns_precomp")){
+        uniqueSitePatterns <- sapply(1:(d_trait-1), function(trait) uniqueSP_fast(dat[dat$tip == mean_tip, c(mean_trait, (1:d_trait)[-mean_trait][trait])], dat[dat$tip == mean_tip,d_trait+1]))
+      } else {
+        uniqueSitePatterns <-uniqueSitePatterns_precomp
+      }
+      
+      #convert to standard normal
+      nOrds <- sapply(1:(d_trait-1), function(trait) nrow(uniqueSitePatterns[1,trait][[1]]))
+      nOrds_traits <- rep(1:(d_trait-1), nOrds)
+      new_std_thresholds <- cbind(rep(-Inf, d_trait), sapply(1:ncol(threshold_mat), function(col) threshold_mat[,col] - means[mean_tip,]), rep(Inf, d_trait))
+      SPs <- do.call(rbind, uniqueSitePatterns[1,])
+      # uppers <- t(sapply(1:length(nOrds_traits), function(pat) c(new_std_thresholds[mean_trait,SPs[pat,1]+2], new_std_thresholds[nOrds_traits[pat] + ifelse(nOrds_traits[pat] < mean_trait, 0, 1),SPs[pat,2]+2])))
+      # lowers <- t(sapply(1:length(nOrds_traits), function(pat) c(new_std_thresholds[mean_trait,SPs[pat,1]+1], new_std_thresholds[nOrds_traits[pat] + ifelse(nOrds_traits[pat] < mean_trait, 0, 1),SPs[pat,2]+1])))
+      uppers_lowers <- t(sapply(1:length(nOrds_traits), function(pat) c(new_std_thresholds[mean_trait,SPs[pat,1]+c(2,1)], new_std_thresholds[nOrds_traits[pat] + ifelse(nOrds_traits[pat] < mean_trait, 0, 1), SPs[pat,2]+c(2,1)])))
+      uppers <- uppers_lowers[,c(1,3)]
+      lowers <- uppers_lowers[,c(2,4)]
+      
+      rhos = rep(corrs_of_trait, nOrds)
+      counts = unlist(uniqueSitePatterns[2,])
+      
+      
+      probs <- pbivnorm_infs(uppers[,1], uppers[,2], rhos) - 
+        pbivnorm_infs(lowers[,1], uppers[,2], rhos) - 
+        pbivnorm_infs(uppers[,1], lowers[,2], rhos) + 
+        pbivnorm_infs(lowers[,1], lowers[,2], rhos)
+      probs[probs < 0] <- 0 #get rid of floating point errors
+      logLL <- -sum(log(probs) * counts)
+      
+    }
+    # TODO make regularizing term multivariate normal
+    if(treeReg){
+      
+      contrasts <- prunes[[1]] %*% means[rownames(prunes[[3]])[1:nTaxa],]
+      
+      if(!mvBMreg){
+        # regTerm <- -sum(sapply(1:(nTaxa-1), function(x) dnorm(x = contrasts[x,], mean = rep(0,d_trait), #mean 0 is marginalizes over all mean states
+        #                                                       sd = sqrt(reg*prunes[[2]][x]), log = T)))
+        
+        regTerm <- -sum(sapply(1:(nTaxa-1), function(x) dnorm(x = contrasts[x,mean_trait], mean = 0, #mean 0 is marginalizes over all mean states
+                                                              sd = sqrt(reg*prunes[[2]][x]), log = T)))
+        
+      } else if(mvBMreg){
+        pairs <- cbind(rep(mean_trait, d_trait-1), (1:d_trait)[-mean_trait])
+        regTerm <- sum(sapply(1:nrow(pairs), function(pair) -sum(sapply(1:(nTaxa-1), function(x) mvtnorm::dmvnorm(x = contrasts[x,pairs[pair,]], mean = rep(0,2), #mean 0 is marginalizes over all mean states
+                                                                                                                  sigma = cor[pairs[pair,], pairs[pair,]] * (reg*prunes[[2]][x]), log = T)))))
+        
+        
+        #equiv to above
+        # regTerm <- -sum(sapply(1:(nTaxa-1), function(x) mvtnorm::dmvnorm(x = contrasts[x,], mean = rep(0,d_trait), #mean 0 is marginalizes over all mean states
+        #                                                                  sigma = (reg*prunes[[2]][x]*diag(d_trait)), log = T)))
+        # 
+        # npdcor <- cov2cor(as.matrix(nearPD(cor)$mat))
+        # regTerm <- -sum(sapply(1:(nTaxa-1), function(x) mvtnorm::dmvnorm(x = contrasts[x,], mean = rep(0,d_trait), #mean 0 is marginalizes over all mean states
+        #                                                                  sigma = (reg*prunes[[2]][x]*npdcor), log = T)))
+        # 
+        # -sum(sapply(1:(nTaxa-1), function(x) mvtnorm::dmvnorm(x = contrasts[x,], mean = rep(0,d_trait), #mean 0 is marginalizes over all mean states
+        #                                                       sigma = (reg*prunes[[2]][x]*npdcor), log = T)))
+        # 
+        # -sum(sapply(1:(nTaxa-1), function(x) mvtnorm::dmvnorm(x = contrasts[x,], mean = rep(0,d_trait), #mean 0 is marginalizes over all mean states
+        #                                                       sigma = (reg*prunes[[2]][x]*diag(d_trait)), log = T)))
+        # 
+        # -sum(sapply(1:(nTaxa-1), function(x) mvtnorm::dmvnorm(x = contrasts[x,], mean = rep(0,d_trait), #mean 0 is marginalizes over all mean states
+        #                                                       sigma = (reg*prunes[[2]][x]*(diag(d_trait)+npdcor)/2), log = T)))
+        # 
+        # 
+        # univContrasts <-(contrasts) %*% chol(npdcor)
+        # detR <- det(npdcor)
+        # LLs[i] <- sum(dnorm(contrast / BLength^0.5, mean = 0, sd = 1, log = T)) 
+        # 
+        # regTerm <- -sum(sapply(1:(nTaxa-1), function(x) sum(dnorm(x = univContrasts[x,] / sqrt(reg*prunes[[2]][x]), mean = rep(0,d_trait), 
+        #                                                       sd = 1, log = T)) - log(detR*(sqrt(reg*prunes[[2]][x])^length(univContrasts[x,])))/2))
+        
+      }
+    } else {
+      regTerm <- -sum(sapply(1:(d_trait-1), function(trait) mvtnorm::dmvnorm(x = c(par_to_opt, cont_traits_of_tip[trait]),
+                                                                             sigma = matrix(c(1,corrs_of_trait[trait],corrs_of_trait[trait],1),2,2) * reg,
+                                                                             mean = c(0,0), log = T)))
+    }
+    
+  } else if(par_type == "reg"){
+    logLL <- 0
+    
+    if(treeReg){
+      # TODO make regularizing term multivariate normal
+      if(!mvBMreg){
+        contrasts <- prunes[[1]] %*% means[rownames(prunes[[3]])[1:nTaxa],]
+        regTerm <- -sum(sapply(1:(nTaxa-1), function(x) dnorm(x = contrasts[x,], mean = rep(0,d_trait),
+                                                              sd = sqrt(reg*prunes[[2]][x]), log = T)))
+      } else if(mvBMreg){
+        pairs <- as.matrix(which(upper.tri(cor), arr.ind = T))
+        regTerm <- sum(sapply(1:nrow(pairs), function(pair) -sum(sapply(1:(nTaxa-1), function(x) mvtnorm::dmvnorm(x = contrasts[x,pairs[pair,]], mean = rep(0,2), 
+                                                                                                                  sigma = cor[pairs[pair,], pairs[pair,]] * (reg*prunes[[2]][x]), log = T)))))
+      }
+    } else {
+      regTerm <- -sum(dnorm(x = means, sd = sqrt(reg), mean = 0, log = T)) 
+    }
+    
+  } else if(par_type == "corr"){
+    cont_traits <- means[, c(tr1, tr2)]
+    corrs_threshes <- threshold_mat[c(tr1, tr2),]
+    if(!vectorized){
+      logLL <- -sum(unlist(sapply(1:nTaxa, function(tip) log(multi_pmvnorm_optim_multithresh(mean = cont_traits[tip,],
+                                                                                             sigma = matrix(c(1,par_to_opt,par_to_opt,1),2,2),
+                                                                                             ordinals = uniqueSP_redux(dat[dat$tip == tip, c(tr1, tr2)], dat[dat$tip == tip,d_trait+1])$SPs,
+                                                                                             thresholds = corrs_threshes)) * 
+                                    uniqueSP_redux(dat[dat$tip == tip, c(tr1, tr2)], dat[dat$tip == tip,d_trait+1])$counts)))
+    } else if(vectorized){ ## alternatively, in vectorized form
+      
+      if(!exists("uniqueSitePatterns_precomp")){
+        uniqueSitePatterns <- sapply(1:nTaxa, function(tip)  uniqueSP_fast(dat[dat$tip == tip, c(tr1, tr2)], dat[dat$tip == tip,d_trait+1]))
+      } else {
+        uniqueSitePatterns <-uniqueSitePatterns_precomp
+      }
+      
+      #convert to standard normal
+      nOrds <- sapply(1:nTaxa, function(tip) nrow(uniqueSitePatterns[1,tip][[1]])) #number of unique ordinals per tip
+      nOrds_tips <- rep(1:nTaxa, nOrds)
+      new_std_thresholds <- lapply(1:nTaxa, function(tip) cbind(rep(-Inf, 2), sapply(1:ncol(corrs_threshes), function(col) corrs_threshes[,col] - cont_traits[tip,]), rep(Inf, 2)))
+      SPs <- do.call(rbind, uniqueSitePatterns[1,])
+      uppers_lowers <- t(sapply(1:length(nOrds_tips), function(pat) c(new_std_thresholds[[nOrds_tips[pat]]][1, SPs[pat,1]+c(2,1)], 
+                                                                      new_std_thresholds[[nOrds_tips[pat]]][2, SPs[pat,2]+c(2,1)])))
+      uppers <- uppers_lowers[,c(1,3)]
+      lowers <- uppers_lowers[,c(2,4)]
+      
+      rhos = rep(par_to_opt, sum(nOrds))
+      counts = unlist(uniqueSitePatterns[2,])
+      probs <- pbivnorm_infs(uppers[,1], uppers[,2], rhos) - 
+        pbivnorm_infs(lowers[,1], uppers[,2], rhos) - 
+        pbivnorm_infs(uppers[,1], lowers[,2], rhos) + 
+        pbivnorm_infs(lowers[,1], lowers[,2], rhos)
+      probs[probs < 0] <- 0 #get rid of floating point errors
+      logLL <- -sum(log(probs) * counts)
+      
+    }
+    
+    if(regularizeViaLKJ){
+       beta_shapes <- rep(beta_corr_eta - 1 + d_trait / 2, 2) / weaken_beta_informativeness_by
+       regTerm  <- -(dbeta(x = (par_to_opt + 1) / 2, shape1 = beta_shapes[1], shape2 =  beta_shapes[2], log = TRUE))
+    } else {
+      regTerm <- 0
+    }
+  } else if(par_type == "thresh"){
+    # threshold_mat
+    # thresh_ind 
+    # thresh_trait
+    cont_traits_of_thresh <- means[, thresh_trait]
+    
+    
+    if(univThresh){
+      
+      ordinals <- lapply(1:nTaxa, function(tip) as.data.frame(wtd.table(dat[dat$tip == tip, thresh_trait], weights = dat$nSP[dat$tip == tip])))
+      stateProbs <- lapply(1:nTaxa, function(tip) log(computeUnivNormalStateProbs(thresholds = threshold_mat[thresh_trait,], 
+                                                                                  mean = means[tip, thresh_trait])))
+      logLL <- -sum(sapply(1:nTaxa, function(tip) sum((stateProbs[[tip]][as.integer(as.character(ordinals[[tip]][,1]))+1]) * ordinals[[tip]][,2])))
+      
+      
+    } else {
+      corrs_of_thresh <- cor[thresh_trait, -thresh_trait]
+      
+      if(!vectorized){
+        cont_traits_of_other_traits <- means[, -thresh_trait]
+        threshs_of_other_traits <- threshold_mat[-thresh_trait,]
+        logLL <- sum(sapply(1:nTaxa, function(tip) -sum(unlist(sapply(1:(d_trait-1), function(trait) log(multi_pmvnorm_optim_multithresh(mean = c(cont_traits_of_thresh[tip], cont_traits_of_other_traits[tip,trait]),
+                                                                                                                                         sigma = matrix(c(1,corrs_of_thresh[trait],corrs_of_thresh[trait],1),2,2),
+                                                                                                                                         ordinals = uniqueSP_redux(dat[dat$tip == tip, c(thresh_trait, (1:d_trait)[-thresh_trait][trait])], dat[dat$tip == tip,d_trait+1])$SPs,
+                                                                                                                                         thresholds = rbind(threshold_mat[thresh_trait,], threshs_of_other_traits[trait,]))) * 
+                                                                        uniqueSP_redux(dat[dat$tip == tip, c(thresh_trait, (1:d_trait)[-thresh_trait][trait])], dat[dat$tip == tip,d_trait+1])$counts)))))
+      } else if(vectorized){ ## alternatively, in vectorized form
+        
+        if(!exists("uniqueSitePatterns_precomp")){
+          uniqueSitePatterns <- lapply(1:nTaxa, function(tip) sapply(1:(d_trait-1), function(trait) uniqueSP_fast(dat[dat$tip == tip, c(thresh_trait, (1:d_trait)[-thresh_trait][trait])], dat[dat$tip == tip,d_trait+1])))
+        } else {
+          uniqueSitePatterns <-uniqueSitePatterns_precomp
+        }
+        
+        #convert to standard normal
+        nOrds <- lapply(1:nTaxa, function(tip) sapply(1:(d_trait-1), function(trait) nrow(uniqueSitePatterns[[tip]][1,trait][[1]]))) #number of unique ordinals per tip per trait match
+        nOrds_traits <- lapply(1:nTaxa, function(tip) rep(1:(d_trait-1), nOrds[[tip]]))
+        new_std_thresholds <- lapply(1:nTaxa, function(tip) cbind(rep(-Inf, d_trait), sapply(1:ncol(threshold_mat), function(col) threshold_mat[,col] - means[tip,]), rep(Inf, d_trait)))
+        SPs <- lapply(1:nTaxa, function(tip) do.call(rbind, uniqueSitePatterns[[tip]][1,]))
+        uppers_lowers <- lapply(1:nTaxa, function(tip) t(sapply(1:length(nOrds_traits[[tip]]), 
+                                                                function(pat) c(new_std_thresholds[[tip]][thresh_trait, SPs[[tip]][pat,1]+c(2,1)], 
+                                                                                new_std_thresholds[[tip]][nOrds_traits[[tip]][pat] + ifelse(nOrds_traits[[tip]][pat] < thresh_trait, 0, 1), SPs[[tip]][pat,2]+c(2,1)]))))
+        uppers <- do.call(rbind, lapply(1:nTaxa, function(tip) uppers_lowers[[tip]][,c(1,3)]))
+        lowers <- do.call(rbind, lapply(1:nTaxa, function(tip) uppers_lowers[[tip]][,c(2,4)]))
+        
+        rhos = corrs_of_thresh[unlist(nOrds_traits)]
+        counts = unlist(lapply(1:nTaxa, function(tip) unlist(uniqueSitePatterns[[tip]][2,])))
+        
+        probs <- pbivnorm_infs(uppers[,1], uppers[,2], rhos) - 
+          pbivnorm_infs(lowers[,1], uppers[,2], rhos) - 
+          pbivnorm_infs(uppers[,1], lowers[,2], rhos) + 
+          pbivnorm_infs(lowers[,1], lowers[,2], rhos)
+        probs[probs < 0] <- 0 #get rid of floating point errors
+        logLL <- -sum(log(probs) * counts)
+        
+      }
+    }
+    
+    # regTerm <- 0
+    
+    #introduce regularizing term
+    #assume joint optimizatiton of thresholds separations
+    if(abs(sum(par_to_opt) - sum(diff(threshold_mat[thresh_trait,][threshold_mat[thresh_trait,] != Inf]))) > 1E-6){
+      if(length(par_to_opt) != (length(threshold_mat[thresh_trait,][threshold_mat[thresh_trait,] != Inf])-1)){
+        stop("something has gone terribly wrong")
+      } else {
+        sum_of_spacings <- sum(diff(threshold_mat[thresh_trait,][threshold_mat[thresh_trait,] != Inf]))
+        regTerm <- -sum(dexp(diff(threshold_mat[thresh_trait,][threshold_mat[thresh_trait,] != Inf]), lambda, TRUE))
+      } 
+    } else {
+      sum_of_spacings <- sum(par_to_opt)
+      regTerm <- -sum(dexp(par_to_opt, lambda, TRUE))
+      
+    }
+    # regTerm <- -dnorm(x = log(sum_of_spacings), mean = thresh_reg_mu, sd = thresh_reg_sd, log = T) #lognormal regularization
+    
+  } else if(par_type == "thresh_reg"){
+    logLL <- 0
+    threshold_mat
+    thresh_spacings <- unlist(lapply(1:d_trait, function(trait) diff(threshold_mat[trait,][threshold_mat[trait,] != Inf])))
+    thresh_spacings <- thresh_spacings[thresh_spacings > 1E-6]
+    regTerm <- -sum(dexp(thresh_spacings, lambda, TRUE))
+    
+    
+    #lognormal regularization
+    # thresh_sums_of_spacings <- sapply(1:d_trait, function(trait) sum(diff(threshold_mat[trait,][threshold_mat[trait,] != Inf])))
+    # thresh_sums_of_spacings <- thresh_sums_of_spacings[thresh_sums_of_spacings > 1E-6]
+    # regTerm <- -sum(dnorm(x = log(thresh_sums_of_spacings), mean = thresh_reg_mu, sd = thresh_reg_sd, log = T))
+    
+  }
+  
+  returnVal <- logLL + regTerm
+  if(returnVal == Inf){returnVal <- 1E10} #hacky temporary fix to make optim's generalized "L-BFGS-B" method stop complaining about singularities :/
+  return(returnVal)
+}
+
 maha <- function(x1, x2, vcvm, squared = FALSE){
   squaredDist <- t(x1-x2) %*% solve(vcvm) %*% (x1-x2)
   if(!squared){
@@ -308,343 +653,6 @@ getUniqueSitePatternsIgnoreImputed <- function(par_to_opt, dat){ #precompute uni
     uniqueSitePatterns <- lapply(1:nTaxa, function(tip) sapply(1:(d_trait-1), function(trait) uniqueSP_fast_ignoreImputed(dat[dat$tip == tip, c(thresh_trait, (1:d_trait)[-thresh_trait][trait])], dat[dat$tip == tip,d_trait+1])))
   }
   return(uniqueSitePatterns)
-}
-
-logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may help with speedup
-  vectorized <- T
-  univMeans <- T
-  univThresh <- T
-  treeReg <- T
-  mvBMreg <- F
-  enforcePSD <- F
-  if(vectorized & length(dat) >= 6){
-    uniqueSitePatterns_precomp <- dat[[6]]
-  }
-  n_thresh <- dat[[5]]
-  tipNames <- dat[[4]]
-  prunes <- dat[[3]]
-  k_par <- dat[[2]]
-  dat <- dat[[1]]
-  par_to_opt_ind <- which(is.na(k_par))
-  par <- k_par
-  par[par_to_opt_ind] <- par_to_opt
-  
-  hb <- length(par)
-  nTaxa <- length(unique(dat$tip))
-  d_trait <- ncol(dat) - 2
-  cor <- diag(d_trait)
-  cor[upper.tri(cor)] <- k_par[(nTaxa*d_trait+2) : (nTaxa*d_trait+1+choose(d_trait, 2))];
-  reg <- par[nTaxa * d_trait + 1]
-  means <- matrix(par[1:(nTaxa*d_trait)], ncol = d_trait, nrow = nTaxa, byrow = T)
-  rownames(means) <- tipNames
-  threshold_mat <- cbind(rep(0, d_trait), matrix(par[(nTaxa*d_trait+2+choose(d_trait, 2)) : ((nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1))], nrow = d_trait, ncol = n_thresh[1]-1))
-  
-  #for lognormal regularization
-  # thresh_reg_mu <- par[(nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1) + 1]
-  # thresh_reg_sd <- par[(nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1) + 2]
-  
-  #for exponential regularization
-  lambda <- par[(nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1) + 1]
-  
-  if(length(par_to_opt_ind) == "1"){
-    if(par_to_opt_ind > 0 & par_to_opt_ind <= (nTaxa * d_trait)){
-      par_type <- "mean"
-      mean_trait <- par_to_opt_ind %% d_trait
-      if(mean_trait == 0){
-        mean_trait <- d_trait
-      }
-      mean_tip <- ceiling(par_to_opt_ind / d_trait)
-    } else if (par_to_opt_ind == (nTaxa * d_trait + 1)){
-      par_type = "reg"  
-    } else if (par_to_opt_ind >= (nTaxa*d_trait+2) & par_to_opt_ind <= (nTaxa*d_trait+1+choose(d_trait, 2))){
-      par_type = "corr"
-      trs <- which(is.na(cor), arr.ind = T)
-      tr1 = trs[1]
-      tr2 = trs[2]
-      cor[tr1, tr2] <- par_to_opt
-    } else if(par_to_opt_ind > (nTaxa*d_trait+1+choose(d_trait, 2)) & par_to_opt_ind <= ((nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1))){
-      par_type <- "thresh"
-      threshold_mat_unknown <- cbind(rep(0, d_trait), matrix(k_par[(nTaxa*d_trait+2+choose(d_trait, 2)) : ((nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1))], nrow = d_trait, ncol = n_thresh[1]-1))
-      thresh_trait <- which(is.na(threshold_mat_unknown), arr.ind = T)
-      thresh_ind <- thresh_trait[2]
-      thresh_trait <- thresh_trait[1]
-      
-    }
-  } else if(all(par_to_opt_ind > (nTaxa*d_trait+1+choose(d_trait, 2)) & par_to_opt_ind <= ((nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1)))){
-    par_type <- "thresh"
-    threshold_mat_unknown <- cbind(rep(0, d_trait), matrix(k_par[(nTaxa*d_trait+2+choose(d_trait, 2)) : ((nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1))], nrow = d_trait, ncol = n_thresh[1]-1))
-    thresh_trait <- which(is.na(threshold_mat_unknown), arr.ind = T)
-    thresh_ind <- thresh_trait[,2]
-    thresh_trait <- thresh_trait[1,1]
-  }
-  
-  if(length(intersect(par_to_opt_ind, (((nTaxa*d_trait+1+choose(d_trait, 2)) + sum(n_thresh-1)) + c(1,2)))) > 0){
-    par_type <- "thresh_reg"
-  }
-  
-  cor <- cor + t(cor) - diag(d_trait)
-  threshold_mat <- t(sapply(1:nrow(threshold_mat), function(trait) cumsum(threshold_mat[trait,])))
-  
-  # psd_cor <- cov2cor(as.matrix(nearPD(cor)$mat))
-  if(enforcePSD & par_type == "corr"){
-    if(!is.positive.definite(cor)){
-      return(1E100)
-    }
-  }
-  
-  if(par_type == "mean"){
-    #check biv dens of trait mean with all others traits for that tip
-    
-    cont_traits_of_tip <- means[mean_tip, -mean_trait]
-    corrs_of_trait <- cor[mean_trait, -mean_trait]
-    threshs_of_other_traits <- threshold_mat[-mean_trait,]
-    
-    if(univMeans){
-      ordinals <- as.data.frame(wtd.table(dat[dat$tip == mean_tip,mean_trait], weights = dat$nSP[dat$tip == mean_tip]))
-      stateProbs <- log(computeUnivNormalStateProbs(thresholds = threshold_mat[mean_trait,], mean = means[mean_tip, mean_trait]))
-      logLL <- -sum(stateProbs[as.integer(as.character(ordinals[,1])) + 1] * ordinals[,2])
-      }
-    
-    if(!vectorized & !univMeans){
-      
-      logLL <- -sum(unlist(sapply(1:(d_trait-1), function(trait) log(multi_pmvnorm_optim_multithresh(mean = c(par_to_opt, cont_traits_of_tip[trait]),
-                                                                                                     sigma = matrix(c(1,corrs_of_trait[trait],corrs_of_trait[trait],1),2,2),
-                                                                                                     ordinals = uniqueSP_redux(dat[dat$tip == mean_tip, c(mean_trait, (1:d_trait)[-mean_trait][trait])], dat[dat$tip == mean_tip,d_trait+1])$SPs,
-                                                                                                     thresholds = rbind(threshold_mat[mean_trait,], threshs_of_other_traits[trait,]))) * 
-                                    uniqueSP_redux(dat[dat$tip == mean_tip, c(mean_trait, (1:d_trait)[-mean_trait][trait])], dat[dat$tip == mean_tip,d_trait+1])$counts)))
-    } else if(vectorized & !univMeans){ ## alternatively, in vectorized form
-      
-      if(!exists("uniqueSitePatterns_precomp")){
-        uniqueSitePatterns <- sapply(1:(d_trait-1), function(trait) uniqueSP_fast(dat[dat$tip == mean_tip, c(mean_trait, (1:d_trait)[-mean_trait][trait])], dat[dat$tip == mean_tip,d_trait+1]))
-      } else {
-        uniqueSitePatterns <-uniqueSitePatterns_precomp
-      }
-      
-      #convert to standard normal
-      nOrds <- sapply(1:(d_trait-1), function(trait) nrow(uniqueSitePatterns[1,trait][[1]]))
-      nOrds_traits <- rep(1:(d_trait-1), nOrds)
-      new_std_thresholds <- cbind(rep(-Inf, d_trait), sapply(1:ncol(threshold_mat), function(col) threshold_mat[,col] - means[mean_tip,]), rep(Inf, d_trait))
-      SPs <- do.call(rbind, uniqueSitePatterns[1,])
-      # uppers <- t(sapply(1:length(nOrds_traits), function(pat) c(new_std_thresholds[mean_trait,SPs[pat,1]+2], new_std_thresholds[nOrds_traits[pat] + ifelse(nOrds_traits[pat] < mean_trait, 0, 1),SPs[pat,2]+2])))
-      # lowers <- t(sapply(1:length(nOrds_traits), function(pat) c(new_std_thresholds[mean_trait,SPs[pat,1]+1], new_std_thresholds[nOrds_traits[pat] + ifelse(nOrds_traits[pat] < mean_trait, 0, 1),SPs[pat,2]+1])))
-      uppers_lowers <- t(sapply(1:length(nOrds_traits), function(pat) c(new_std_thresholds[mean_trait,SPs[pat,1]+c(2,1)], new_std_thresholds[nOrds_traits[pat] + ifelse(nOrds_traits[pat] < mean_trait, 0, 1), SPs[pat,2]+c(2,1)])))
-      uppers <- uppers_lowers[,c(1,3)]
-      lowers <- uppers_lowers[,c(2,4)]
-      
-      rhos = rep(corrs_of_trait, nOrds)
-      counts = unlist(uniqueSitePatterns[2,])
-      
-      
-      probs <- pbivnorm_infs(uppers[,1], uppers[,2], rhos) - 
-        pbivnorm_infs(lowers[,1], uppers[,2], rhos) - 
-        pbivnorm_infs(uppers[,1], lowers[,2], rhos) + 
-        pbivnorm_infs(lowers[,1], lowers[,2], rhos)
-      probs[probs < 0] <- 0 #get rid of floating point errors
-      logLL <- -sum(log(probs) * counts)
-      
-    }
-    # TODO make regularizing term multivariate normal
-    if(treeReg){
-      
-      contrasts <- prunes[[1]] %*% means[rownames(prunes[[3]])[1:nTaxa],]
-      
-      if(!mvBMreg){
-        # regTerm <- -sum(sapply(1:(nTaxa-1), function(x) dnorm(x = contrasts[x,], mean = rep(0,d_trait), #mean 0 is marginalizes over all mean states
-        #                                                       sd = sqrt(reg*prunes[[2]][x]), log = T)))
-        
-        regTerm <- -sum(sapply(1:(nTaxa-1), function(x) dnorm(x = contrasts[x,mean_trait], mean = 0, #mean 0 is marginalizes over all mean states
-                                                              sd = sqrt(reg*prunes[[2]][x]), log = T)))
-        
-      } else if(mvBMreg){
-        pairs <- cbind(rep(mean_trait, d_trait-1), (1:d_trait)[-mean_trait])
-        regTerm <- sum(sapply(1:nrow(pairs), function(pair) -sum(sapply(1:(nTaxa-1), function(x) mvtnorm::dmvnorm(x = contrasts[x,pairs[pair,]], mean = rep(0,2), #mean 0 is marginalizes over all mean states
-                                                              sigma = cor[pairs[pair,], pairs[pair,]] * (reg*prunes[[2]][x]), log = T)))))
-        
-        
-        #equiv to above
-        # regTerm <- -sum(sapply(1:(nTaxa-1), function(x) mvtnorm::dmvnorm(x = contrasts[x,], mean = rep(0,d_trait), #mean 0 is marginalizes over all mean states
-        #                                                                  sigma = (reg*prunes[[2]][x]*diag(d_trait)), log = T)))
-        # 
-        # npdcor <- cov2cor(as.matrix(nearPD(cor)$mat))
-        # regTerm <- -sum(sapply(1:(nTaxa-1), function(x) mvtnorm::dmvnorm(x = contrasts[x,], mean = rep(0,d_trait), #mean 0 is marginalizes over all mean states
-        #                                                                  sigma = (reg*prunes[[2]][x]*npdcor), log = T)))
-        # 
-        # -sum(sapply(1:(nTaxa-1), function(x) mvtnorm::dmvnorm(x = contrasts[x,], mean = rep(0,d_trait), #mean 0 is marginalizes over all mean states
-        #                                                       sigma = (reg*prunes[[2]][x]*npdcor), log = T)))
-        # 
-        # -sum(sapply(1:(nTaxa-1), function(x) mvtnorm::dmvnorm(x = contrasts[x,], mean = rep(0,d_trait), #mean 0 is marginalizes over all mean states
-        #                                                       sigma = (reg*prunes[[2]][x]*diag(d_trait)), log = T)))
-        # 
-        # -sum(sapply(1:(nTaxa-1), function(x) mvtnorm::dmvnorm(x = contrasts[x,], mean = rep(0,d_trait), #mean 0 is marginalizes over all mean states
-        #                                                       sigma = (reg*prunes[[2]][x]*(diag(d_trait)+npdcor)/2), log = T)))
-        # 
-        # 
-        # univContrasts <-(contrasts) %*% chol(npdcor)
-        # detR <- det(npdcor)
-        # LLs[i] <- sum(dnorm(contrast / BLength^0.5, mean = 0, sd = 1, log = T)) 
-        # 
-        # regTerm <- -sum(sapply(1:(nTaxa-1), function(x) sum(dnorm(x = univContrasts[x,] / sqrt(reg*prunes[[2]][x]), mean = rep(0,d_trait), 
-        #                                                       sd = 1, log = T)) - log(detR*(sqrt(reg*prunes[[2]][x])^length(univContrasts[x,])))/2))
-        
-      }
-    } else {
-      regTerm <- -sum(sapply(1:(d_trait-1), function(trait) mvtnorm::dmvnorm(x = c(par_to_opt, cont_traits_of_tip[trait]),
-                                                                             sigma = matrix(c(1,corrs_of_trait[trait],corrs_of_trait[trait],1),2,2) * reg,
-                                                                             mean = c(0,0), log = T)))
-    }
-    
-  } else if(par_type == "reg"){
-    logLL <- 0
-    
-    if(treeReg){
-      # TODO make regularizing term multivariate normal
-      if(!mvBMreg){
-        contrasts <- prunes[[1]] %*% means[rownames(prunes[[3]])[1:nTaxa],]
-        regTerm <- -sum(sapply(1:(nTaxa-1), function(x) dnorm(x = contrasts[x,], mean = rep(0,d_trait),
-                                                              sd = sqrt(reg*prunes[[2]][x]), log = T)))
-      } else if(mvBMreg){
-        pairs <- as.matrix(which(upper.tri(cor), arr.ind = T))
-        regTerm <- sum(sapply(1:nrow(pairs), function(pair) -sum(sapply(1:(nTaxa-1), function(x) mvtnorm::dmvnorm(x = contrasts[x,pairs[pair,]], mean = rep(0,2), 
-                                                                                                                  sigma = cor[pairs[pair,], pairs[pair,]] * (reg*prunes[[2]][x]), log = T)))))
-      }
-    } else {
-      regTerm <- -sum(dnorm(x = means, sd = sqrt(reg), mean = 0, log = T)) 
-    }
-    
-  } else if(par_type == "corr"){
-    cont_traits <- means[, c(tr1, tr2)]
-    corrs_threshes <- threshold_mat[c(tr1, tr2),]
-    if(!vectorized){
-      logLL <- -sum(unlist(sapply(1:nTaxa, function(tip) log(multi_pmvnorm_optim_multithresh(mean = cont_traits[tip,],
-                                                                                             sigma = matrix(c(1,par_to_opt,par_to_opt,1),2,2),
-                                                                                             ordinals = uniqueSP_redux(dat[dat$tip == tip, c(tr1, tr2)], dat[dat$tip == tip,d_trait+1])$SPs,
-                                                                                             thresholds = corrs_threshes)) * 
-                                    uniqueSP_redux(dat[dat$tip == tip, c(tr1, tr2)], dat[dat$tip == tip,d_trait+1])$counts)))
-    } else if(vectorized){ ## alternatively, in vectorized form
-      
-      if(!exists("uniqueSitePatterns_precomp")){
-        uniqueSitePatterns <- sapply(1:nTaxa, function(tip)  uniqueSP_fast(dat[dat$tip == tip, c(tr1, tr2)], dat[dat$tip == tip,d_trait+1]))
-      } else {
-        uniqueSitePatterns <-uniqueSitePatterns_precomp
-      }
-      
-      #convert to standard normal
-      nOrds <- sapply(1:nTaxa, function(tip) nrow(uniqueSitePatterns[1,tip][[1]])) #number of unique ordinals per tip
-      nOrds_tips <- rep(1:nTaxa, nOrds)
-      new_std_thresholds <- lapply(1:nTaxa, function(tip) cbind(rep(-Inf, 2), sapply(1:ncol(corrs_threshes), function(col) corrs_threshes[,col] - cont_traits[tip,]), rep(Inf, 2)))
-      SPs <- do.call(rbind, uniqueSitePatterns[1,])
-      uppers_lowers <- t(sapply(1:length(nOrds_tips), function(pat) c(new_std_thresholds[[nOrds_tips[pat]]][1, SPs[pat,1]+c(2,1)], 
-                                                                      new_std_thresholds[[nOrds_tips[pat]]][2, SPs[pat,2]+c(2,1)])))
-      uppers <- uppers_lowers[,c(1,3)]
-      lowers <- uppers_lowers[,c(2,4)]
-      
-      rhos = rep(par_to_opt, sum(nOrds))
-      counts = unlist(uniqueSitePatterns[2,])
-      probs <- pbivnorm_infs(uppers[,1], uppers[,2], rhos) - 
-        pbivnorm_infs(lowers[,1], uppers[,2], rhos) - 
-        pbivnorm_infs(uppers[,1], lowers[,2], rhos) + 
-        pbivnorm_infs(lowers[,1], lowers[,2], rhos)
-      probs[probs < 0] <- 0 #get rid of floating point errors
-      logLL <- -sum(log(probs) * counts)
-      
-    }
-    
-    regTerm <- 0
-    
-  } else if(par_type == "thresh"){
-    # threshold_mat
-    # thresh_ind 
-    # thresh_trait
-    cont_traits_of_thresh <- means[, thresh_trait]
-    
-    
-    if(univThresh){
-      
-      ordinals <- lapply(1:nTaxa, function(tip) as.data.frame(wtd.table(dat[dat$tip == tip, thresh_trait], weights = dat$nSP[dat$tip == tip])))
-      stateProbs <- lapply(1:nTaxa, function(tip) log(computeUnivNormalStateProbs(thresholds = threshold_mat[thresh_trait,], 
-                                                                                  mean = means[tip, thresh_trait])))
-      logLL <- -sum(sapply(1:nTaxa, function(tip) sum((stateProbs[[tip]][as.integer(as.character(ordinals[[tip]][,1]))+1]) * ordinals[[tip]][,2])))
-      
-      
-    } else {
-      corrs_of_thresh <- cor[thresh_trait, -thresh_trait]
-      
-      if(!vectorized){
-        cont_traits_of_other_traits <- means[, -thresh_trait]
-        threshs_of_other_traits <- threshold_mat[-thresh_trait,]
-        logLL <- sum(sapply(1:nTaxa, function(tip) -sum(unlist(sapply(1:(d_trait-1), function(trait) log(multi_pmvnorm_optim_multithresh(mean = c(cont_traits_of_thresh[tip], cont_traits_of_other_traits[tip,trait]),
-                                                                                                                                         sigma = matrix(c(1,corrs_of_thresh[trait],corrs_of_thresh[trait],1),2,2),
-                                                                                                                                         ordinals = uniqueSP_redux(dat[dat$tip == tip, c(thresh_trait, (1:d_trait)[-thresh_trait][trait])], dat[dat$tip == tip,d_trait+1])$SPs,
-                                                                                                                                         thresholds = rbind(threshold_mat[thresh_trait,], threshs_of_other_traits[trait,]))) * 
-                                                                        uniqueSP_redux(dat[dat$tip == tip, c(thresh_trait, (1:d_trait)[-thresh_trait][trait])], dat[dat$tip == tip,d_trait+1])$counts)))))
-      } else if(vectorized){ ## alternatively, in vectorized form
-        
-        if(!exists("uniqueSitePatterns_precomp")){
-          uniqueSitePatterns <- lapply(1:nTaxa, function(tip) sapply(1:(d_trait-1), function(trait) uniqueSP_fast(dat[dat$tip == tip, c(thresh_trait, (1:d_trait)[-thresh_trait][trait])], dat[dat$tip == tip,d_trait+1])))
-        } else {
-          uniqueSitePatterns <-uniqueSitePatterns_precomp
-        }
-        
-        #convert to standard normal
-        nOrds <- lapply(1:nTaxa, function(tip) sapply(1:(d_trait-1), function(trait) nrow(uniqueSitePatterns[[tip]][1,trait][[1]]))) #number of unique ordinals per tip per trait match
-        nOrds_traits <- lapply(1:nTaxa, function(tip) rep(1:(d_trait-1), nOrds[[tip]]))
-        new_std_thresholds <- lapply(1:nTaxa, function(tip) cbind(rep(-Inf, d_trait), sapply(1:ncol(threshold_mat), function(col) threshold_mat[,col] - means[tip,]), rep(Inf, d_trait)))
-        SPs <- lapply(1:nTaxa, function(tip) do.call(rbind, uniqueSitePatterns[[tip]][1,]))
-        uppers_lowers <- lapply(1:nTaxa, function(tip) t(sapply(1:length(nOrds_traits[[tip]]), 
-                                                                function(pat) c(new_std_thresholds[[tip]][thresh_trait, SPs[[tip]][pat,1]+c(2,1)], 
-                                                                                new_std_thresholds[[tip]][nOrds_traits[[tip]][pat] + ifelse(nOrds_traits[[tip]][pat] < thresh_trait, 0, 1), SPs[[tip]][pat,2]+c(2,1)]))))
-        uppers <- do.call(rbind, lapply(1:nTaxa, function(tip) uppers_lowers[[tip]][,c(1,3)]))
-        lowers <- do.call(rbind, lapply(1:nTaxa, function(tip) uppers_lowers[[tip]][,c(2,4)]))
-        
-        rhos = corrs_of_thresh[unlist(nOrds_traits)]
-        counts = unlist(lapply(1:nTaxa, function(tip) unlist(uniqueSitePatterns[[tip]][2,])))
-        
-        probs <- pbivnorm_infs(uppers[,1], uppers[,2], rhos) - 
-          pbivnorm_infs(lowers[,1], uppers[,2], rhos) - 
-          pbivnorm_infs(uppers[,1], lowers[,2], rhos) + 
-          pbivnorm_infs(lowers[,1], lowers[,2], rhos)
-        probs[probs < 0] <- 0 #get rid of floating point errors
-        logLL <- -sum(log(probs) * counts)
-        
-      }
-    }
-    
-    # regTerm <- 0
-    
-    #introduce regularizing term
-    #assume joint optimizatiton of thresholds separations
-    if(abs(sum(par_to_opt) - sum(diff(threshold_mat[thresh_trait,][threshold_mat[thresh_trait,] != Inf]))) > 1E-6){
-      if(length(par_to_opt) != (length(threshold_mat[thresh_trait,][threshold_mat[thresh_trait,] != Inf])-1)){
-        stop("something has gone terribly wrong")
-      } else {
-        sum_of_spacings <- sum(diff(threshold_mat[thresh_trait,][threshold_mat[thresh_trait,] != Inf]))
-        regTerm <- -sum(dexp(diff(threshold_mat[thresh_trait,][threshold_mat[thresh_trait,] != Inf]), lambda, TRUE))
-      } 
-    } else {
-      sum_of_spacings <- sum(par_to_opt)
-      regTerm <- -sum(dexp(par_to_opt, lambda, TRUE))
-      
-    }
-    # regTerm <- -dnorm(x = log(sum_of_spacings), mean = thresh_reg_mu, sd = thresh_reg_sd, log = T) #lognormal regularization
-    
-  } else if(par_type == "thresh_reg"){
-    logLL <- 0
-    threshold_mat
-    thresh_spacings <- unlist(lapply(1:d_trait, function(trait) diff(threshold_mat[trait,][threshold_mat[trait,] != Inf])))
-    thresh_spacings <- thresh_spacings[thresh_spacings > 1E-6]
-    regTerm <- -sum(dexp(thresh_spacings, lambda, TRUE))
-    
-    
-    #lognormal regularization
-    # thresh_sums_of_spacings <- sapply(1:d_trait, function(trait) sum(diff(threshold_mat[trait,][threshold_mat[trait,] != Inf])))
-    # thresh_sums_of_spacings <- thresh_sums_of_spacings[thresh_sums_of_spacings > 1E-6]
-    # regTerm <- -sum(dnorm(x = log(thresh_sums_of_spacings), mean = thresh_reg_mu, sd = thresh_reg_sd, log = T))
-    
-  }
-  
-  returnVal <- logLL + regTerm
-  if(returnVal == Inf){returnVal <- 1E10} #hacky temporary fix to make optim's generalized "L-BFGS-B" method stop complaining about singularities :/
-  return(returnVal)
 }
 
 recompileMeansCorrsThreshes <- function(par, dat){
@@ -1017,12 +1025,12 @@ approxMultinomialCondMCMC <- function(probs, obs_counts, total_count, min_ess = 
 
 
 #first let's resimulate data
-nrounds <- 16
-nTaxa <- 8
-d_traits <- 20
+nrounds <- 8
+nTaxa <- 6
+d_traits <- 50
 useIdentity <- F
 n_sub_matrices <- 1
-n_indiv <- sample(50:200, nTaxa, replace = T)
+n_indiv <- sample(50:100, nTaxa, replace = T)
 n_thresholds <- sample(2:6, d_traits, T) #for variable numbers of thresholds, just need to buffer with 'Inf's on the right
 weighPCV <- F
 MCAR <- F #missing data is coded with state '9'
@@ -1394,7 +1402,7 @@ par_to_opt_ind <- par_to_opt_ind[1:(n_thresholds[thresh_trait_ind]-1)]
 # par <- c(c(t(traits)), 10, R[upper.tri(R)], c(threshold_diffs_init)) #try using true par values to check for good behavior
 # par_to_opt_ind <- length(par) + c(-1,0)
 par_to_opt_ind <- 5 #mean
-# par_to_opt_ind <- (nTaxa * d_traits + 2) #correlation
+par_to_opt_ind <- (nTaxa * d_traits + 2) #correlation
 par_to_opt <- par[par_to_opt_ind]
 type_of_param <- ifelse(par_to_opt_ind[1] <= nTaxa * d_traits, "m", 
                         ifelse(par_to_opt_ind[1] == (nTaxa * d_traits + 1), "v",

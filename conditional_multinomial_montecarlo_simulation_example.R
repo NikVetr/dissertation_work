@@ -265,4 +265,6 @@ approxMultinomialCondMCMC <- function(probs, obs_counts, total_count, min_ess = 
   }
 }
 
-approxMultinomialCondMCMC(probs = probs, obs_counts = obs, total_count = size_tot, min_ess = 100, start_niter = 1000)
+apply(approxMultinomialCondMCMC(probs = probs, obs_counts = obs, total_count = size_tot, min_ess = 1000, start_niter = 1000), 2, mean)
+
+#let's try Mark's telescoping multinomial solution

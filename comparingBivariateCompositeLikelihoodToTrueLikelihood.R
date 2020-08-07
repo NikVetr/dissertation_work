@@ -112,9 +112,9 @@ r2_1to1 <- function(var1, var2, uplow = F){
   }
 }
 
-dimr <- 80
-nrep <- 500
-comparingTrueVsComp <- t(replicate(nrep, compareCompVsFull(dimr, cor = NA)))
+dimr <- 10
+nrep <- 100
+comparingTrueVsComp <- t(replicate(nrep, compareCompVsFull(dimr, cor = NA, lower = runif(dimr, -0.5, 0.5), upper = runif(dimr, 0.5, 1.5))))
 # comparingTrueVsComp[,2] <- comparingTrueVsComp[,2] / dimr
 # lm(comparingTrueVsComp[,1] ~ comparingTrueVsComp[,2])
 cor(comparingTrueVsComp[,1], comparingTrueVsComp[,2])^2
@@ -215,3 +215,20 @@ diff(intercepts)
 # 
 # plot(t(replicate(100, f())))
 
+#does the bivariate probability mirror the univariate?
+nrep = 100
+vals <- matrix(data = 0, nrow = nrep, ncol = 3)
+low_extra <- runif(5, -0.5, 0.5)
+high_extra <- runif(5, 0.5, 1.5)
+for(i in 1:nrep){
+  corr_param <- 0.75
+  low = c(runif(1, -0.5, 0.5), 0.5, low_extra)
+  high = c(runif(1, 0.5, 1.5), 1.1, high_extra)
+  dimr <- length(low)
+  R <- diag(c(rep(1-corr_param, dimr))) + corr_param
+  R <- rlkj(dimr)
+  vals[i,1] <- compareCompVsFull(dimr= 2, cor = R, lower = low, upper = high)[1]
+  vals[i,2] <- compareCompVsFull(dimr= 2, cor = R, lower = low, upper = high)[2]
+  vals[i,3] <- log(pnorm(q = high[1]) - pnorm(q = low[1]))
+}
+pairs(vals)

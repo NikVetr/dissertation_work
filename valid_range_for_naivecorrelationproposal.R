@@ -54,27 +54,32 @@ plotMatrix <- function(mobject, size, location, lwd = 2, grid = T, font = 1, cex
   }
 }
 R <- rlkj(K = dim) 
-valid_range <- function(R_test, inds = c(1,2), incr = 0.01){
+valid_range <- function(R, inds = c(1,2), incr = 0.01){
+  R_test <- R
   up <- 0
   while(matrixcalc::is.positive.definite(R_test)){
     up <- up + incr
-    R_test[inds[1], inds[2]] <- R_test[inds[2], inds[1]] <- R_test[inds[1], inds[2]] + up
+    R_test[inds[1], inds[2]] <- R_test[inds[2], inds[1]] <- R[inds[1], inds[2]] + up
   }
   R_test <- R
   down <- 0
   while(matrixcalc::is.positive.definite(R_test)){
     down <- down - incr
-    R_test[inds[1], inds[2]] <- R_test[inds[2], inds[1]] <- R_test[inds[1], inds[2]] + down
+    R_test[inds[1], inds[2]] <- R_test[inds[2], inds[1]] <- R[inds[1], inds[2]] + down
   }
   return((up - down) - 2*incr)
 }
 
-dims <- round(1.15^(1:40))[-(1:5)]
+dims <- round(1.15^(1:45))[-(1:5)]
 
-ranges <- sapply(dims, function(dim) replicate(n = 1000, valid_range(rlkj(K = dim), incr = 0.001)))
-
-
-plot(dims, apply(ranges, 2, mean), 
+save(ranges, file = "ranges_of_expected_wiggleroom.txt")
+ranges <- sapply(dims, function(dim) replicate(n = 2000, valid_range(rlkj(K = dim), incr = 0.001)))
+par(mar = c(5,5,0,2))
+png(filename = "/Users/nikolai/Documents/Harvati_Reanalysis_Manuscript/figures/expected_wiggle_room.png", width = 800, height = 600)
+plot(dims, log10(apply(ranges, 2, mean)), ylim = c(-2.1,0.5),
      type = "l", xlab = "matrix dimensionality", 
-     ylab = "expected wiggle room", cex.lab = 1.25, lwd = 3, bty = "n", col = "darkred")
+     ylab = "expected interval width", cex.lab = 1.25, lwd = 3, bty = "n", col = "darkred", xaxt = "n", yaxt = "n")
+axis(side = 2, labels = c(2*2^(-(0:3)), sapply(-(4:10), function(i) as.expression(bquote(2^ .(i))))), at = log10(2*2^(-(0:10))), las = 2)
+axis(side = 1, labels = -1:11*50, at = -1:11*50)
+dev.off()
 

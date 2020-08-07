@@ -4,7 +4,6 @@ library(geomorph)
 library(Matrix)
 library(phytools)
 library(phangorn)
-library(Rphylip)
 
 normalize <- T
 noPCA <- T
@@ -12,7 +11,25 @@ PCA_covBG <- F
 collapseHomo <- T
 collapseSubsp <- F
 
-
+greedyCT <- function(trees){
+  tipNames <- trees[[1]]$tip.label
+  tipNums <- paste0("t", 1:length(tipNames))
+  for(i in 1:length(trees)){
+    trees[[i]]$tip.label <- tipNums[match(trees[[i]]$tip.label, tipNames)]
+  }
+  ape::write.tree(trees, file = "gct_trees.txt")
+  writeLines("gct_trees.txt\nY", con = "consense_script.txt")
+  if(file.exists("outfile")){file.remove("outfile")}
+  if(file.exists("outtree")){file.remove("outtree")}
+  system(paste0("/Applications/phylip-3.695/exe/consense < consense_script.txt"), intern = T)
+  gct <- ape::read.tree("outtree")
+  if(file.exists("outfile")){file.remove("outfile")}
+  if(file.exists("outtree")){file.remove("outtree")}
+  if(file.exists("gct_trees.txt")){file.remove("gct_trees.txt")}
+  if(file.exists("consense_script.txt")){file.remove("consense_script.txt")}
+  gct$tip.label <- tipNames[match(gct$tip.label, tipNums)]
+  return(gct)
+}
 convNum2Str <- function(nums, key){
   sapply(1:length(nums), function(x) key[nums[x]])
 }
@@ -187,8 +204,7 @@ subsp <- unique(codes_linnaen[,4])
 # root(rethinking_tree, outgroup = "Galeopterus variegatus")
 # plot(rethinking_tree)
 tenk_trees <- read.nexus("/Users/nikolai/Documents/TreeBlock_10kTrees_Primates_Version3.nex")
-tenk_tree <- Rconsense(tenk_trees, path = "/Volumes/macOS/Users/nikolai/Downloads/phylip-3.695/")
-
+tenk_tree <- maxCladeCred(tenk_trees)
 # Text S2. Timetrees and RAxML phylograms in Newick format.
 # 1. Newick timetree with autocorrelated rates and hard-bounded constraints. One unit = 100 million years. 
 # 2. Newick timetree with autocorrelated rates and soft-bounded constraints. One unit = 100 million years. 
@@ -233,28 +249,6 @@ jenks2Trees_PCA_hp <- c(read.tree("output/empirical_46traits_jenks_2_PCs_trees_r
 jenks4Trees_PCA_nhp <- c(read.tree("output/empirical_46traits_jenks_nohomopops_4_PCs_trees_run_1.trees"), read.tree("output/empirical_46traits_jenks_nohomopops_4_PCs_trees_run_2.trees"))
 jenks4Trees_PCA_hp <- c(read.tree("output/empirical_46traits_jenks_4_PCs_trees_run_1.trees"), read.tree("output/empirical_46traits_jenks_4_PCs_trees_run_2.trees"))
 
-trees <- c(read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_females_noHomopops_uninfRM_PCA95_c1.trees"),
-           read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_females_noHomopops_uninfRM_PCA95_c2.trees"))
-# trees <- c(read.tree("/Volumes/1TB/Harvati_Empirical/output/iid_exp/harvati_PCA_bothSexes_noHomopops_univBM_PCA100_c1.trees"),
-           # read.tree("/Volumes/1TB/Harvati_Empirical/output/iid_exp/harvati_PCA_bothSexes_noHomopops_univBM_PCA100_c2.trees"))
-test_mcc <- (maxCladeCred(trees)) #maybe try greedy consensus again?
-
-greedyCT <- function(trees){
-  write.tree(trees, file = "gct_trees.txt")
-  system("/Applications/phylip-3.695/exe/consense")
-  system("gct_trees.txt")
-  
-}
-test_gct <- 
-plot(test_mcc)
-RF.dist(test_mcc, mol_tree)
-RF.dist(test_mcc, mol_tree_noNean)
-
-
-RF.dist(upgma(dist(traits_harvati[[2]])), mol_tree)
-mol_tree_noNean <- drop.tip(mol_tree, "Homo_neanderthalensis")
-RF.dist(upgma(dist(traits_harvati[[3]])), mol_tree_noNean)
-
 trees <- c(trees1, trees2)
 trees_hp <- c(trees1hp, trees2hp)
 hptree <- maxCladeCred(trees_hp)
@@ -289,12 +283,15 @@ for(tree in 1:length(tenk_trees)){
   tr <- tenk_trees[[tree]]  
   tr <- add.tips(tree = tr, tips = "Papio_kindae", where = "Papio_cynocephalus")
   newtiplabels_moltree <- setdiff(spOnly$tip.label, tr$tip.label)
+  newtiplabels_moltree <- newtiplabels_moltree[-which(newtiplabels_moltree == "Homo_neanderthalensis")]
+  newtiplabels_moltree <- c(newtiplabels_moltree, "Homo_neanderthalensis")
   oldtiplabels_moltree <- c(sapply(1:8, function(x) paste0(strsplit(newtiplabels_moltree[x], "_")[[1]][c(1,3)], collapse = "_")), "Homo_sapiens_neanderthalensis")
   oldtiplabels_moltree <- oldtiplabels_moltree[oldtiplabels_moltree != "Homo_NA"]
   oldtipindices_moltree <- (sapply(1:length(oldtiplabels_moltree), function(tiplab) which(tr$tip.label == oldtiplabels_moltree[tiplab])))
   tr$tip.label <- (replace(tr$tip.label, list = oldtipindices_moltree, values = newtiplabels_moltree))
   tenk_trees_filtered[[tree]] <- unroot(keep.tip(phy = tr, tip = spOnly$tip.label))
 }
+save(tenk_trees_filtered, file = "tenk_trees_filtered")
 
 # 
 # ppMorph <- prop.clades(spOnly, trees, rooted = F)/length(trees)
@@ -869,8 +866,6 @@ for(i in 1:1){
 tiplabs <- trees[[1]]$tip.label
 dev.off()
 mvBM_trees <- c(read.tree("output/harvati_noPCA_c1.trees"), read.tree("output/harvati_noPCA_c2.trees"))
-mvBM_trees <- c(read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_Females_noHomopops_uninfRM_PCA99_c1.trees"),
-                read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_Females_noHomopops_uninfRM_PCA99_c2.trees"))
 
 mk_trees_pca <- c(read.tree("output/harvati2004_mkModel_nohomopops_PCA_c1.trees"), read.tree("output/harvati2004_mkModel_nohomopops_PCA_c2.trees"))
 
@@ -886,7 +881,8 @@ textsiz = 4
 par(mfrow =c(2,2))
 par(mar = c(5,5,5,5))
 # par(mfrow =c(2,2), mai=c(0.65,0.65,0.65,0.5), xpd = T)
-comparison_mvBM_Mol <- compareTrees(prop.part.df(tenk_trees_filtered_noNean), prop.part.df(mvBM_trees), tiplabs)
+tiplabs <- mvBM_trees[[1]]$tip.label
+comparison_mvBM_Mol <- compareTrees(prop.part.df(tenk_trees_filtered), prop.part.df(mvBM_trees), tiplabs)
 plot(comparison_mvBM_Mol, xlab = "molecular posterior probabilities", ylab = "morphological posterior probabilities", cex = ptsiz, cex.lab = labsiz, cex.axis = axsiz)
 abline(0, 1, lwd = lnsiz, lty = 2, col = "darkgrey")
 title(main = "mvBM vs. Molecular Compare-Trees Plot", cex.main = tsiz, line = 0.5)
@@ -918,3 +914,51 @@ box(which = "plot")
 box(which = "figure", lty = 3)
 
 dev.off()
+
+
+#######################################
+#### TESTING OUT THE FORKING PATHS ####
+#######################################
+
+load("tenk_trees_filtered")
+mol_tree_gct <- greedyCT(tenk_trees_filtered)
+
+trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/infPriorsMoreProps/harvati_PCA_bothSexes_noHomopops_uninf_mvBM_PCA99_c1.trees")
+trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/infPriorsMoreProps/harvati_PCA_bothSexes_noHomopops_uninf_mvBM_PCA99_c2.trees")
+
+trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_noHomopops_fixRM_PCA99_c1.trees")
+trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_noHomopops_fixRM_PCA99_c2.trees")
+
+
+# trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_noHomopops_uninfRM_PCA99_c1.trees")
+# trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_noHomopops_uninfRM_PCA99_c2.trees")
+# 
+# trees1 <- read.tree("output/harvati_noPCA_c1.trees") 
+# trees2 <- read.tree("output/harvati_noPCA_c2.trees")
+
+trees <- c(trees1, trees2)
+
+
+tiplabs <- trees[[1]]$tip.label
+comparison <- compareTrees(prop.part.df(trees1), prop.part.df(trees2), tiplabs)
+plot(comparison, main = "same analysis comparetrees")
+RF.dist(maxCladeCred(trees1), maxCladeCred(trees2))
+
+test_mcc <- maxCladeCred(trees) 
+test_gct <- greedyCT(trees)
+
+outg <- as.character(unlist(sapply(c("Macaca", "Mandrillus", "Papio"), function(genus) test_mcc$tip.label[grepl(genus, test_mcc$tip.label)])))
+test_mcc <- reroot(tree = test_mcc, node.number = getMRCA(test_mcc, outg), position = 
+                     test_mcc$edge.length[which(test_mcc$edge[,2] ==  getMRCA(test_mcc, outg))] / 2)
+test_gct <- reroot(tree = test_gct, node.number = getMRCA(test_gct, outg), position = 
+                     test_gct$edge.length[which(test_gct$edge[,2] ==  getMRCA(test_gct, outg))] / 2)
+
+
+plot(test_gct)
+plot(test_mcc)
+
+RF.dist(test_gct, mol_tree_gct)
+RF.dist(test_mcc, mol_tree_gct)
+
+comparison <- compareTrees(prop.part.df(tenk_trees_filtered), prop.part.df(trees), tiplabs)
+plot(comparison, main = "difft analysis comparetrees", xlab = "molecular")
