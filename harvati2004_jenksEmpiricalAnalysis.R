@@ -15,6 +15,12 @@ library(StatMatch)
 library(mvtnorm)
 library(classInt)
 
+ssqm <- function(nums){sum((nums-mean(nums))^2)}
+closest <- function(num, nums, eps = 1E-6){
+  diffs <- abs(nums-num)
+  which(diffs < (min(diffs) + eps) )
+}
+
 convNum2Str <- function(nums, key){
   sapply(1:length(nums), function(x) key[nums[x]])
 }

@@ -1,5 +1,7 @@
 #check met hastings operation on correlation matrix with wishart move
 library(MCMCpack)
+library(tictoc)
+
 shape_1 <- 15
 shape_2 <- 86
 par(mfrow = c(2,2))
@@ -1004,22 +1006,26 @@ blooming_onion_tune_chol <- function (upper_cholesky_factor, ind, varN = 0.1, be
 # microbenchmark(blooming_onion_tune_chol(upper_cholesky_factor = cholfac, ind = sample(1:dim, 1), varN = 0.1, betaWindow = 0.1), 
 #                blooming_onion_tune_clean(cor = cormat, varN = 0.1, betaWindow = 0.1))
 
-
+set.seed(1)
 dim <- 10
 target_corr <- rlkj(dim, eta = 1)
 true_corrs <- target_corr[upper.tri(target_corr)]
 n_obs <- 50
-varN <- 0.01
+varN <- rep(0.005, dim)
 betaWindow <- 0.05
 sampleUniform <- F
 obs <- rmvnorm(n = n_obs, mean = rep(0, dim), sigma = target_corr)
 emp_corrs <- cor(obs)[upper.tri(diag(dim))]
 par(mfrow = c(ifelse(dim < 5, choose(dim, 2), 4), 2))
 
+
 corr_init <- chol(rlkj(dim))
-n_iter <- 5E6
+n_iter <- 1E7
 thin <- 1E3
 n_out <- round(n_iter/thin)
+tuning = T; tune_bouts = 20; tune_helper <- 2
+target_accept_ratio = 0.234
+burnin_prop = 0.2
 
 corr_mats <- replicate(n_out, diag(dim))
 corr_mats[,,1] <- corr_curr <-  corr_init
@@ -1028,8 +1034,14 @@ inds_init <- 1:dim
 inds <- replicate(n_out, rep(0,dim))
 inds[,1] <- inds_curr <-  inds_init
 
+tune_probs_accept <- array(data = 0, dim = c(1, dim, tune_bouts-1))
+loc_rel_target <- array(data = NA, dim = c(1, dim, tune_bouts-1))
+tune_params <- array(data = 0, dim = c(1, dim, tune_bouts-1))
 
-n_accept <- 0
+n_accept <- rep(0, dim)
+n_prop <- rep(0, dim)
+
+tic()
 for(i in 2:n_iter){
   
   #progress bar
@@ -1037,18 +1049,19 @@ for(i in 2:n_iter){
   
   #propose a move
   ind_to_prop <- sample(1:dim, 1)
+  n_prop[inds_curr[ind_to_prop]] <- n_prop[inds_curr[ind_to_prop]] + 1
   inds_prop <- c(inds_curr[-ind_to_prop], inds_curr[ind_to_prop])
-  corr_prop_rat <- blooming_onion_tune_chol(upper_cholesky_factor = corr_curr, ind = ind_to_prop, varN = varN, betaWindow = betaWindow, returnInOrder = F)
+  corr_prop_rat <- blooming_onion_tune_chol(upper_cholesky_factor = corr_curr, ind = ind_to_prop, varN = varN[inds_curr[ind_to_prop]], betaWindow = betaWindow, returnInOrder = F)
   corr_prop <- corr_prop_rat$sample
   log_prop_ratio <-  corr_prop_rat$log_prop_ratio
-  (t(corr_prop) %*% corr_prop)[ind_to_prop,] - (t(corr_curr) %*% corr_curr)[ind_to_prop,]
+  # (t(corr_prop) %*% corr_prop)[ind_to_prop,] - (t(corr_curr) %*% corr_curr)[ind_to_prop,]
   
   #compute ratio of target densities
   if(sampleUniform){
     log_dens_ratio <- 0 
   } else {
-    log_dens_ratio <- sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = (t(corr_prop) %*% corr_prop)[inds_prop,inds_prop], log = T)) - 
-      sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = (t(corr_curr) %*% corr_curr)[inds_curr,inds_curr], log = T))
+    log_dens_ratio <- sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = (t(corr_prop) %*% corr_prop)[order(inds_prop),order(inds_prop)], log = T)) - 
+      sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = (t(corr_curr) %*% corr_curr)[order(inds_curr),order(inds_curr)], log = T))
   }
   
   #accept or reject
@@ -1056,7 +1069,7 @@ for(i in 2:n_iter){
   if(log(runif(1, 0, 1)) < log_accept_prob){
     corr_curr <- corr_prop
     inds_curr <- inds_prop
-    n_accept <- n_accept + 1
+    n_accept[inds_curr[ind_to_prop]] <- n_accept[inds_curr[ind_to_prop]] + 1
   } 
   
   #record given thinning 
@@ -1065,11 +1078,65 @@ for(i in 2:n_iter){
     inds[,i/thin] <- inds_curr
   }
   
+  #tune parameters if we're doing that
+  if(tuning & (i < (n_iter * burnin_prop))){
+    if(i %% (n_iter * burnin_prop / tune_bouts) == 0){
+      tune_index <- i / (n_iter * burnin_prop / tune_bouts) #find which round of tuning we're in
+      
+      tune_params[,,tune_index] <- varN #record the current proposal distribution params
+      
+      prob_accept <- n_accept / n_prop #find current acceptance probs and reset acceptance prob counters
+      n_accept <- rep(0, dim)
+      n_prop <- rep(0, dim)
+      
+      #record acceptance probs and where we're at relative to the target acceptance ratio
+      tune_probs_accept[,,tune_index] <- prob_accept
+      loc_rel_target[,,tune_index] <- prob_accept > target_accept_ratio
+      above_and_below <- t(sapply(1:nrow(loc_rel_target), function(row)
+                         sapply(1:ncol(loc_rel_target), function(col)
+                                  sum(loc_rel_target[row,col,1:tune_index]))))
+      above <- above_and_below > 0
+      below <- above_and_below < tune_index 
+      
+      #figure out where we gotta go from here
+      goes_up <- below & !above
+      goes_down <- above & !below
+      average <- above & below 
+      
+      #find the probs and param values closest to the target acceptance ratio
+      closest_above_prob  <- t(sapply(1:nrow(tune_probs_accept), function(row)
+        sapply(1:ncol(tune_probs_accept), function(col)
+          min(sort(tune_probs_accept[row,col,1:tune_index])[sort(tune_probs_accept[row,col,1:tune_index]) > target_accept_ratio]))))
+      closest_below_prob  <- t(sapply(1:nrow(tune_probs_accept), function(row)
+        sapply(1:ncol(tune_probs_accept), function(col)
+          max(sort(tune_probs_accept[row,col,1:tune_index])[sort(tune_probs_accept[row,col,1:tune_index]) < target_accept_ratio]))))
+      
+      closest_above_param  <- t(sapply(1:nrow(tune_probs_accept), function(row)
+        sapply(1:ncol(tune_probs_accept), function(col)
+          tune_params[row, col, tune_probs_accept[row, col,] == min(tune_probs_accept[row,col,1:tune_index][(tune_probs_accept[row,col,1:tune_index]) > target_accept_ratio])][1])))
+      closest_below_param  <- t(sapply(1:nrow(tune_probs_accept), function(row)
+        sapply(1:ncol(tune_probs_accept), function(col)
+          tune_params[row, col, tune_probs_accept[row, col,] == max(tune_probs_accept[row,col,1:tune_index][(tune_probs_accept[row,col,1:tune_index]) < target_accept_ratio])][1])))
+      
+      #move tuning params in proportion to their distance to the target acceptance ratio, with a "tune_helper" to make more aggressive moves
+      varN[goes_up] <- closest_below_prob[,goes_up]  / target_accept_ratio * varN[goes_up] / tune_helper
+      varN[goes_down] <- closest_above_prob[,goes_down]  / target_accept_ratio * varN[goes_down] * tune_helper
+      
+      #when we finally have tuning param values on either side of the target accept ratio, take a weighted average of the closest params to get new proposal params
+      if(any(average)){
+        varN[average] <- (as.numeric(closest_above_param[,average]) * (-closest_below_prob[,average] + target_accept_ratio) + 
+                       as.numeric(closest_below_param[,average])  * (closest_above_prob[,average] - target_accept_ratio)) / 
+                       (closest_above_prob[,average] - closest_below_prob[,average])
+      }
+      
+    }
+  }
+  
 }
+toc()
 
 
-
-corr_mats <- sapply(1:n_out, function(x) (t(corr_mats[,,x]) %*% corr_mats[,,x])[inds[,x],inds[,x]], simplify = "array")
+corr_mats <- sapply(1:n_out, function(x) (t(corr_mats[,,x]) %*% corr_mats[,,x])[order(inds[,x]),order(inds[,x])], simplify = "array")
 # corr_mats <- sapply(1:n_out, function(x) (t(corr_mats[,,x]) %*% corr_mats[,,x]), simplify = "array")
 
 corrs <- sapply(1:n_out, function(x) corr_mats[,,x][upper.tri(diag(dim))])
@@ -1078,10 +1145,10 @@ target_ind_mat <- ind_mat[upper.tri(ind_mat)]
 ind_mat <- t(sapply(1:choose(dim, 2), function(x) which(ind_mat == target_ind_mat[x], arr.ind = T)))
 par(mfrow = c(3, 2))
 for(i in 1:choose(dim, 2)){
-  hist(corrs[i,][(n_out / 5) : n_out], breaks = 1E2, main = paste0("correlation betw. trait ", ind_mat[i,1], " and trait ", ind_mat[i,2]), xlim = c(-1,1));
+  hist(corrs[i,][(n_out * burnin_prop) : n_out], breaks = 1E2, main = paste0("correlation betw. trait ", ind_mat[i,1], " and trait ", ind_mat[i,2]), xlim = c(-1,1));
   if(i == 1){legend(x = "topright", lwd = 2, legend = c("true value", "observed value"), col = c("red", "purple"))}
   abline(v = true_corrs[i], col = 2, lwd = 2); abline(v = emp_corrs[i], col = "purple", lwd = 2)
-  plot(corrs[i,], type = "l", ylim = c(-1,1)); lines(corrs[i,][1:(n_out/5)], col = "grey"); abline(h = true_corrs[i], col = 2, lwd = 2); abline(h = emp_corrs[i], col = "purple", lwd = 2)
+  plot(corrs[i,], type = "l", ylim = c(-1,1)); lines(corrs[i,][1:(n_out * burnin_prop)], col = "grey"); abline(h = true_corrs[i], col = 2, lwd = 2); abline(h = emp_corrs[i], col = "purple", lwd = 2)
 }
 
 if(sampleUniform){
@@ -1112,58 +1179,138 @@ if(sampleUniform){
   hist(as.vector(corrs_targ), main = "Marginal Target Correlations")
 }
 
-paste0("acceptance ratio = ", n_accept / n_iter)
+paste0("acceptance ratio = ", n_accept / n_prop)
 
 ###################################################
 # compare to a 1-off sliding window move proposal #
 ###################################################
 
-# corr_init <- chol(rlkj(dim))
-# n_iter <- 5E5
-# thin <- 1E2
-# n_out <- round(n_iter/thin)
-# 
-# corr_mats <- replicate(n_out, diag(dim))
-# corr_mats[,,1] <- corr_curr <-  corr_init
-# 
-# inds_init <- 1:dim
-# inds <- replicate(n_out, rep(0,dim))
-# inds[,1] <- inds_curr <-  inds_init
-# 
-# n_accept <- 0
-# for(i in 2:n_iter){
-#   
-#   #progress bar
-#   if(i %% (n_iter / 10) == 0){cat(paste0(i / n_iter * 100, "%  "))}
-#   
-#   #propose a move
-#   ind_to_prop <- sample(1:dim, 2, replace = F)
-#   inds_prop <- c(inds_curr[-ind_to_prop], inds_curr[ind_to_prop])
-#   corr_prop_rat <- blooming_onion_tune_chol(upper_cholesky_factor = corr_curr, ind = ind_to_prop, varN = varN, betaWindow = betaWindow)
-#   corr_prop <- corr_prop_rat$sample
-#   log_prop_ratio <-  corr_prop_rat$log_prop_ratio
-#   (t(corr_prop) %*% corr_prop)[ind_to_prop,] - (t(corr_curr) %*% corr_curr)[ind_to_prop,]
-#   
-#   #compute ratio of target densities
-#   if(sampleUniform){
-#     log_dens_ratio <- 0 
-#   } else {
-#     log_dens_ratio <- sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = t(corr_prop) %*% corr_prop, log = T)) - 
-#       sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = t(corr_curr) %*% corr_curr, log = T))
-#   }
-#   
-#   #accept or reject
-#   log_accept_prob <- log_prop_ratio + log_dens_ratio
-#   if(log(runif(1, 0, 1)) < log_accept_prob){
-#     corr_curr <- corr_prop
-#     inds_curr <- inds_prop
-#     n_accept <- n_accept + 1
-#   } 
-#   
-#   #record given thinning 
-#   if(i %% thin == 0){
-#     corr_mats[,,i/thin] <- corr_curr
-#     inds[,i/thin] <- inds_curr
-#   }
-#   
-# }
+n_iter <- 5E7
+thin <- 5E3
+n_out <- round(n_iter/thin)
+windowWidth <- matrix(0.1, dim, dim)
+
+corr_mats_sw <- replicate(n_out, diag(dim))
+corr_mats_sw[,,1] <- corr_curr <-   t(corr_init) %*% corr_init
+
+n_accept <- matrix(0, dim, dim)
+n_prop <- matrix(0, dim, dim)
+
+
+tune_probs_accept <- array(data = 0, dim = c(dim, dim, tune_bouts-1))
+loc_rel_target <- array(data = NA, dim = c(dim, dim, tune_bouts-1))
+tune_params <- array(data = 0, dim = c(dim, dim, tune_bouts-1))
+
+tic()
+for(i in 2:n_iter){
+
+  #progress bar
+  if(i %% (n_iter / 100) == 0){cat(paste0(i / n_iter * 100, "%  "))}
+
+  #propose a move
+  inds_to_prop <- sample(1:dim, 2, replace = F)
+  n_prop[inds_to_prop[1], inds_to_prop[2]] <- n_prop[inds_to_prop[2], inds_to_prop[1]] <- n_prop[inds_to_prop[1], inds_to_prop[2]] + 1
+  corr_prop <- corr_curr
+  windowWidth_el <- windowWidth[inds_to_prop[1], inds_to_prop[2]]
+  corr_prop[inds_to_prop[1], inds_to_prop[2]] <- corr_prop[inds_to_prop[2], inds_to_prop[1]] <- corr_curr[inds_to_prop[1], inds_to_prop[2]] + 
+    runif(1, min = -(windowWidth_el/2), max = windowWidth_el/2)
+  log_prop_ratio <- 0
+  
+  #compute ratio of target densities
+  if(corr_prop[inds_to_prop[1], inds_to_prop[2]] > 1 | corr_prop[inds_to_prop[1], inds_to_prop[2]] < -1){
+    log_dens_ratio <- -Inf
+  } else if(!matrixcalc::is.positive.semi.definite(corr_prop)){
+    log_dens_ratio <- -Inf
+  } else{
+    if(sampleUniform){
+      log_dens_ratio <- 0
+    } else {
+      log_dens_ratio <- sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = corr_prop, log = T)) -
+        sum(dmvnorm(x = obs, mean = rep(0, dim), sigma = corr_curr, log = T))
+    }
+  }
+  
+  #accept or reject
+  log_accept_prob <- log_prop_ratio + log_dens_ratio
+  if(log(runif(1, 0, 1)) < log_accept_prob){
+    corr_curr <- corr_prop
+    n_accept[inds_to_prop[1], inds_to_prop[2]] <- n_accept[inds_to_prop[2], inds_to_prop[1]] <- n_accept[inds_to_prop[1], inds_to_prop[2]] + 1
+  }
+
+  #record given thinning
+  if(i %% thin == 0){
+    corr_mats_sw[,,i/thin] <- corr_curr
+  }
+  
+  #tune parameters if we're doing that
+  if(tuning & (i < (n_iter * burnin_prop))){
+    if(i %% (n_iter * burnin_prop / tune_bouts) == 0){
+      tune_index <- i / (n_iter * burnin_prop / tune_bouts)
+      
+      tune_params[,,tune_index] <- windowWidth
+      
+      prob_accept <- n_accept / n_prop 
+      n_accept <- matrix(0, dim, dim)
+      n_prop <- matrix(0, dim, dim)
+      
+      tune_probs_accept[,,tune_index] <- prob_accept
+      loc_rel_target[,,tune_index] <- prob_accept > target_accept_ratio
+      above_and_below <- t(sapply(1:nrow(loc_rel_target), function(row)
+        sapply(1:ncol(loc_rel_target), function(col)
+          sum(loc_rel_target[row,col,1:tune_index]))))
+      above <- above_and_below > 0
+      below <- above_and_below < tune_index 
+      
+      goes_up <- below & !above
+      diag(goes_up) <- F
+      goes_down <- above & !below
+      diag(goes_down) <- F
+      average <- above & below 
+      diag(average) <- F
+      
+      closest_above_prob  <- t(sapply(1:nrow(tune_probs_accept), function(row)
+        sapply(1:ncol(tune_probs_accept), function(col)
+          min(sort(tune_probs_accept[row,col,1:tune_index])[sort(tune_probs_accept[row,col,1:tune_index]) > target_accept_ratio]))))
+      closest_below_prob  <- t(sapply(1:nrow(tune_probs_accept), function(row)
+        sapply(1:ncol(tune_probs_accept), function(col)
+          max(sort(tune_probs_accept[row,col,1:tune_index])[sort(tune_probs_accept[row,col,1:tune_index]) < target_accept_ratio]))))
+      
+      closest_above_param  <- t(sapply(1:nrow(tune_probs_accept), function(row)
+        sapply(1:ncol(tune_probs_accept), function(col)
+          tune_params[row, col, tune_probs_accept[row, col,] == min(tune_probs_accept[row,col,1:tune_index][(tune_probs_accept[row,col,1:tune_index]) > target_accept_ratio])][1])))
+      closest_below_param  <- t(sapply(1:nrow(tune_probs_accept), function(row)
+        sapply(1:ncol(tune_probs_accept), function(col)
+          tune_params[row, col, tune_probs_accept[row, col,] == max(tune_probs_accept[row,col,1:tune_index][(tune_probs_accept[row,col,1:tune_index]) < target_accept_ratio])][1])))
+      
+      
+      windowWidth[goes_up] <- closest_below_prob[goes_up]  / target_accept_ratio * windowWidth[goes_up] / tune_helper
+      windowWidth[goes_down] <- closest_above_prob[goes_down]  / target_accept_ratio * windowWidth[goes_down] * tune_helper
+      
+      if(any(average)){
+        windowWidth[average] <- (as.numeric(closest_above_param[average]) * (-closest_below_prob[average] + target_accept_ratio) + 
+                            as.numeric(closest_below_param[average])  * (closest_above_prob[average] - target_accept_ratio)) / 
+          (closest_above_prob[average] - closest_below_prob[average])
+      }
+      
+    }
+  }
+}
+toc()
+
+corrs_sw <- sapply(1:n_out, function(x) corr_mats_sw[,,x][upper.tri(diag(dim))])
+n_accept / n_prop
+par(mfrow = c(3, 2))
+for(i in 1:choose(dim, 2)){
+  hist(corrs[i,][(n_out * burnin_prop) : n_out], breaks = 1E2, main = paste0("correlation betw. trait ", ind_mat[i,1], " and trait ", ind_mat[i,2]), xlim = c(-1,1));
+  hist(corrs_sw[i,][(n_out * burnin_prop) : n_out], breaks = 1E2, add = T, col = rgb(1,0,0,0.7));
+  if(i == 1){legend(x = "topright", lwd = 2, legend = c("true value", "observed value"), col = c("red", "purple"))}
+  abline(v = true_corrs[i], col = 2, lwd = 2); abline(v = emp_corrs[i], col = "purple", lwd = 2)
+  plot(corrs[i,], type = "l", ylim = c(-1,1)); lines(corrs_sw[i,][1:(n_out * burnin_prop)], col = "grey"); abline(h = true_corrs[i], col = 2, lwd = 2); abline(h = emp_corrs[i], col = "purple", lwd = 2)
+  lines(corrs_sw[i,], type = "l", ylim = c(-1,1), col = rgb(1,0,0,0.7)); lines(corrs_sw[i,][1:(n_out * burnin_prop)], col = "grey")
+}
+
+mean(sapply(1:nrow(corrs), function(param) coda::effectiveSize(corrs[param,(n_out * burnin_prop) : n_out])))
+mean(sapply(1:nrow(corrs_sw), function(param) coda::effectiveSize(corrs_sw[param,(n_out * burnin_prop) : n_out])))
+gelman.diag(as.mcmc.list(list(mcmc(t(corrs[,(n_out * burnin_prop) : n_out])), mcmc(t(corrs_sw[,(n_out * burnin_prop) : n_out])))))
+heidel.diag(as.mcmc.list(list(mcmc(t(corrs[,(n_out * burnin_prop) : n_out])), mcmc(t(corrs_sw[,(n_out * burnin_prop) : n_out])))))
+

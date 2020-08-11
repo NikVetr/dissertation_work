@@ -157,6 +157,10 @@ startsWith2 <- function(x, pre){apply(sapply(1:length(pre), function(n) startsWi
 trees1 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_fixRM_Bailey_PCA99_c1.trees")
 trees2 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_fixRM_Bailey_PCA99_c2.trees")
 
+trees1 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_fixCorrs_Bailey_PCA99_c1.trees")
+trees2 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_fixCorrs_Bailey_PCA99_c2.trees")
+
+
 trees <- c(trees1, trees2)
 
 

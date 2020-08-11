@@ -1,4 +1,4 @@
-
+library(corpcor)
 dim <- 10
 rlkj <- function (K, eta = 1) {
   alpha <- eta + (K - 2)/2
@@ -53,6 +53,7 @@ plotMatrix <- function(mobject, size, location, lwd = 2, grid = T, font = 1, cex
     }
   }
 }
+
 R <- rlkj(K = dim) 
 valid_range <- function(R, inds = c(1,2), incr = 0.01){
   R_test <- R
@@ -70,10 +71,12 @@ valid_range <- function(R, inds = c(1,2), incr = 0.01){
   return((up - down) - 2*incr)
 }
 
+
 dims <- round(1.15^(1:45))[-(1:5)]
 
-save(ranges, file = "ranges_of_expected_wiggleroom.txt")
+# save(ranges, file = "ranges_of_expected_wiggleroom.txt")
 ranges <- sapply(dims, function(dim) replicate(n = 2000, valid_range(rlkj(K = dim), incr = 0.001)))
+load("ranges_of_expected_wiggleroom.txt")
 par(mar = c(5,5,0,2))
 png(filename = "/Users/nikolai/Documents/Harvati_Reanalysis_Manuscript/figures/expected_wiggle_room.png", width = 800, height = 600)
 plot(dims, log10(apply(ranges, 2, mean)), ylim = c(-2.1,0.5),
@@ -83,3 +86,61 @@ axis(side = 2, labels = c(2*2^(-(0:3)), sapply(-(4:10), function(i) as.expressio
 axis(side = 1, labels = -1:11*50, at = -1:11*50)
 dev.off()
 
+#partial correlation matrix test
+makeSymmetric <- function(R){
+  return((R + t(R)) / 2)
+}
+valid_range_pc <- function(R, inds = c(1,2), incr = 0.01){
+  R_test <- corpcor::cor2pcor(R)
+  up <- 0
+  yPSD <- T
+  while(yPSD){
+    up <- up + incr
+    R_test[inds[1], inds[2]] <- R_test[inds[2], inds[1]] <- R[inds[1], inds[2]] + up
+    m = R_test
+    m = -m
+    diag(m) = -diag(m)
+    m = solve(m)
+    if(any(diag(m) < 0)){
+      yPSD <- F
+    } else{
+      yPSD <- matrixcalc::is.positive.definite(makeSymmetric(corpcor::pcor2cor(R_test)))
+    }
+  }
+  R_test <- corpcor::cor2pcor(R)
+  down <- 0
+  yPSD <- T
+  while(yPSD){
+    down <- down - incr
+    R_test[inds[1], inds[2]] <- R_test[inds[2], inds[1]] <- R[inds[1], inds[2]] + down
+    m = R_test
+    m = -m
+    diag(m) = -diag(m)
+    m = solve(m)
+    if(any(diag(m) < 0)){
+      yPSD <- F
+    } else{
+      yPSD <- matrixcalc::is.positive.definite(makeSymmetric(corpcor::pcor2cor(R_test)))
+    }
+  }
+  return((up - down) - 2*incr)
+}
+
+#not all partial correlations are valid
+
+#generate partial correlation matrix
+set.seed(1)
+dim <- 5
+pcm <- matrix(runif(dim^2, -1, 1), dim, dim)
+diag(pcm) <- 1
+
+#transform to correlation matrix
+cm = -pcm
+diag(cm) <- -diag(cm)
+cm <- solve(cm)
+is.positive.definite(cov2cor(cm))
+
+
+R <- rlkj(K = 10)
+valid_range_pc(R, incr = 0.001)
+ranges <- sapply(dims, function(dim) replicate(n = 2000, valid_range_pc(rlkj(K = dim), incr = 0.001)))

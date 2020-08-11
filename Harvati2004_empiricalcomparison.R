@@ -277,11 +277,12 @@ dev.off()
 ###############################
 
 #let's get all the 5k trees in the right format
-tenk_trees_filtered <- rep(mol_tree, length(tenk_trees)+2)[-1]
+age_cynocephalus_kindae_split <- 0.6
+tenk_trees_filtered <- rep(spOnly, length(tenk_trees)+2)[-1]
 for(tree in 1:length(tenk_trees)){
   if(tree %% 100 == 0){print(tree)}
   tr <- tenk_trees[[tree]]  
-  tr <- add.tips(tree = tr, tips = "Papio_kindae", where = "Papio_cynocephalus")
+  tr <- add.tips(tree = tr, tips = "Papio_kindae", where = "Papio_cynocephalus", edge.length = 0)
   newtiplabels_moltree <- setdiff(spOnly$tip.label, tr$tip.label)
   newtiplabels_moltree <- newtiplabels_moltree[-which(newtiplabels_moltree == "Homo_neanderthalensis")]
   newtiplabels_moltree <- c(newtiplabels_moltree, "Homo_neanderthalensis")
@@ -289,7 +290,11 @@ for(tree in 1:length(tenk_trees)){
   oldtiplabels_moltree <- oldtiplabels_moltree[oldtiplabels_moltree != "Homo_NA"]
   oldtipindices_moltree <- (sapply(1:length(oldtiplabels_moltree), function(tiplab) which(tr$tip.label == oldtiplabels_moltree[tiplab])))
   tr$tip.label <- (replace(tr$tip.label, list = oldtipindices_moltree, values = newtiplabels_moltree))
-  tenk_trees_filtered[[tree]] <- unroot(keep.tip(phy = tr, tip = spOnly$tip.label))
+  tr <- (keep.tip(phy = tr, tip = spOnly$tip.label))
+  tr$edge.length[which(tr$edge[,2] == which(tr$tip.label == "Papio_hamadryas_kindae"))] <- age_cynocephalus_kindae_split
+  tr$edge.length[which(tr$edge[,2] == which(tr$tip.label == "Papio_hamadryas_cynocephalus"))] <- age_cynocephalus_kindae_split
+  tr$edge.length[which(tr$edge[,2] == tr$edge[which(tr$edge[,2] == which(tr$tip.label == "Papio_hamadryas_kindae")),1])] <- tr$edge.length[which(tr$edge[,2] == tr$edge[which(tr$edge[,2] == which(tr$tip.label == "Papio_hamadryas_kindae")),1])] - age_cynocephalus_kindae_split
+  tenk_trees_filtered[[tree]] <- tr
 }
 save(tenk_trees_filtered, file = "tenk_trees_filtered")
 
@@ -323,7 +328,6 @@ coph_plot <- cophylo(mol_tree, spOnly, rotate = T)
 assoc <- cbind(mol_tree$tip.label[mol_tree$tip.label != "Homo_sapiens"], mol_tree$tip.label[mol_tree$tip.label != "Homo_sapiens"])
 assoc <- rbind(assoc, cbind(rep("Homo_sapiens", length(hptree$tip.label[grepl("Homo_sap", hptree$tip.label)])), hptree$tip.label[grepl("Homo_sap", hptree$tip.label)]))
 coph_plot_hp <- cophylo(mol_tree, hptree, assoc = assoc, rotate = T)
-
 
 #vs the mvBM tree
 plot_pop_tree <- T
@@ -922,14 +926,18 @@ dev.off()
 
 load("tenk_trees_filtered")
 mol_tree_gct <- greedyCT(tenk_trees_filtered)
-
-trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/infPriorsMoreProps/harvati_PCA_bothSexes_noHomopops_uninf_mvBM_PCA99_c1.trees")
-trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/infPriorsMoreProps/harvati_PCA_bothSexes_noHomopops_uninf_mvBM_PCA99_c2.trees")
-
-trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_noHomopops_fixRM_PCA99_c1.trees")
-trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_noHomopops_fixRM_PCA99_c2.trees")
+mol_tree_mcc <- maxCladeCred(tenk_trees_filtered)
 
 
+trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/infPriorsMoreProps/harvati_PCA_bothSexes_noHomopops_mvBM_PCA99_c1.trees")
+trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/infPriorsMoreProps/harvati_PCA_bothSexes_noHomopops_mvBM_PCA99_c2.trees")
+
+# trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_noHomopops_fixRM_PCA99_c1.trees")
+# trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_noHomopops_fixRM_PCA99_c2.trees")
+
+DC_MP_tree <- read.tree("/Volumes/1TB/Harvati_Empirical/output/maximumParsimonyTree_empirical_noHomoPops_PCA99_divergenceCoding.txt")
+nj_tree <- read.tree("/Volumes/1TB/Harvati_Empirical/output/empirical_PCA99_neighborJoining.txt")
+upgma_tree <- read.tree("/Volumes/1TB/Harvati_Empirical/output/empirical_PCA99_upgma.txt")
 # trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_noHomopops_uninfRM_PCA99_c1.trees")
 # trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_noHomopops_uninfRM_PCA99_c2.trees")
 # 
@@ -937,7 +945,6 @@ trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_noHomopop
 # trees2 <- read.tree("output/harvati_noPCA_c2.trees")
 
 trees <- c(trees1, trees2)
-
 
 tiplabs <- trees[[1]]$tip.label
 comparison <- compareTrees(prop.part.df(trees1), prop.part.df(trees2), tiplabs)
@@ -952,13 +959,87 @@ test_mcc <- reroot(tree = test_mcc, node.number = getMRCA(test_mcc, outg), posit
                      test_mcc$edge.length[which(test_mcc$edge[,2] ==  getMRCA(test_mcc, outg))] / 2)
 test_gct <- reroot(tree = test_gct, node.number = getMRCA(test_gct, outg), position = 
                      test_gct$edge.length[which(test_gct$edge[,2] ==  getMRCA(test_gct, outg))] / 2)
+sapply(1:21, function(x) nodeheight(mol_tree_mcc, x))
 
+#write the 10k tree for mvBM rate matrix estimation
+#but first add a bit of branch length to the kinda baboon and cynocephalus
+write.tree(mol_tree_mcc, file = "/Volumes/1TB/Harvati_Empirical/data2_neanF/mol_tree_mcc.nex")
+mol_tree_mcc_noNean <- drop.tip(mol_tree_mcc, "Homo_neanderthalensis")
+write.tree(mol_tree_mcc_noNean, file = "/Volumes/1TB/Harvati_Empirical/data2_neanF/mol_tree_mcc_noNean.nex")
 
 plot(test_gct)
 plot(test_mcc)
 
 RF.dist(test_gct, mol_tree_gct)
 RF.dist(test_mcc, mol_tree_gct)
+RF.dist(upgma_tree, mol_tree_gct)
+RF.dist(nj_tree, mol_tree_gct, normalize = F)
+RF.dist(DC_MP_tree, mol_tree_gct, normalize = F)
+table(sapply(1:length(trees), function(tree) RF.dist(trees[tree], mol_tree_gct))) / length(trees) * 100
+
+
+table(sapply(1:length(trees), function(tree) RF.dist(trees[tree], mol_tree_gct)))
 
 comparison <- compareTrees(prop.part.df(tenk_trees_filtered), prop.part.df(trees), tiplabs)
 plot(comparison, main = "difft analysis comparetrees", xlab = "molecular")
+
+#######################################
+### MAKING THE FINAL SET OF FIGURES ###
+#######################################
+
+coph_plot <- cophylo(mol_tree, spOnly, rotate = T)
+
+#vs the mvBM tree
+plot_pop_tree <- T
+for(i in 1:1){
+  png(filename = "Documents/Harvati_Reanalysis_Manuscript/figures/figure1.png", width = 1600, height = 800)
+  if(plot_pop_tree){
+    plot.cophylo(coph_plot_hp, mar=c(5,0,2,0), lwd = 4,  fsize = c(2,1.75), link.lwd=4)
+  } else {
+    plot.cophylo(coph_plot, mar=c(5,0,2,0), lwd = 4,  fsize = 2, link.lwd=4)
+  }
+  # df(); plot.cophylo(coph_plot)
+  par(xpd=TRUE)
+  
+  if(!plot_pop_tree){
+    col_left <- as.integer(internal_nodes_probs(coph_plot[[1]][[1]], trees)*100)
+  } else {
+    col_left <- as.integer(internal_nodes_probs(coph_plot_hp[[1]][[1]], trees)*100)
+  }
+  
+  col_left[1] <- 100
+  col_left[col_left == 0] <- 1
+  col_left <- colfunc(100)[col_left]
+  col_left[is.na(col_left)] <- colfunc(100)[1]
+  nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=2.5, which = "left")
+  
+  if(!plot_pop_tree){
+    col_right <- as.integer(internal_nodes_probs(coph_plot[[1]][[2]], trees)*100)
+  } else {
+    col_right <- as.integer(internal_nodes_probs(coph_plot_hp[[1]][[2]], trees_hp)*100)
+  }
+  col_right[1] <- 100
+  col_right[col_right == 0] <- 1
+  col_right <- colfunc(100)[col_right]
+  col_right[is.na(col_right)] <- colfunc(100)[1]
+  nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=2.5, which = "right")
+  
+  title("       Molecular                                          Morphological", cex.main = 3, line = -0.1)
+  title(paste0("RF-Distance = ", RF.dist(mol_tree, spOnly)), cex.main = 1.75, line = -1.2)
+  
+  xl <- -0.3; yb <- -0.115; xr <- 0.3; yt <- -0.065; 
+  rect(
+    head(seq(xl,xr,(xr-xl)/100),-1),
+    yb,
+    tail(seq(xl,xr,(xr-xl)/100),-1),
+    yt,
+    col=colfunc(100)
+  )
+  text(labels = seq(from = 0, to = 1, length.out = 11), y = yb-(yt-yb)/2.5, x = seq(xl,xr,length.out = 11), las=2, cex=1.5)
+  text(labels = "posterior probability", x = (xl+xr)/2, y = yt+(yt-yb)/2.5, font = 2, cex = 2)
+  
+  dev.off()
+}
+clade_prob(c("Macaca_fa", "Macaca_mu"), trees)
+clade_prob(c("Homo", "Pan"), trees)
+clade_prob(c("Pan"), trees)

@@ -111,4 +111,19 @@ meansNexus <- function (characterMatrix, outputFilePath, traitsOnColumns = T){
   sink()
 }
 
+nV <- eigensystem$vectors
+nL <- eigensystem$values
+nL[nL<0] <- 0
+nR <- cov2cor(nV %*% diag(nL) %*% t(nV))
+n_eigensystem <- eigen(nR)
+nV <- n_eigensystem$vectors
+nL <- n_eigensystem$values
+plot(nV[,eigensystem$values > 0], eigensystem$vectors[,eigensystem$values > 0])
+plot(nL, eigensystem$values, type = "l"); abline(0,1,col = 2)
+plot(as.vector(nR), as.vector(cov2cor(as.matrix(Matrix::nearPD(mean_of_cors)$mat))), xlab = "my extension to the eigenvalue extension method"); abline(0,1)
+title(main = "comparing elements of outputs from the two pseudocorrelation correction methods")
+legend(x = "bottomright", lwd = 1, legend = "1-to-1 line")
+R2 <- cor(as.vector(nR), as.vector(cov2cor(as.matrix(Matrix::nearPD(mean_of_cors)$mat))))^2
+legend(x = "topleft", legend = paste0("R^2 = ", R2))
+
 meansNexus(est_means_PCs, outputFilePath = "~/data/bailey_means_PCA99.nex")
