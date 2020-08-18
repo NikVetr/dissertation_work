@@ -351,7 +351,7 @@ png(filename = "Documents/Harvati_Reanalysis_Manuscript/figures/figure1.png", wi
   col_left[col_left == 0] <- 1
   col_left <- colfunc(100)[col_left]
   col_left[is.na(col_left)] <- colfunc(100)[1]
-  nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=2.5, which = "left")
+  nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=3.5, which = "left")
 
   if(!plot_pop_tree){
     col_right <- as.integer(internal_nodes_probs(coph_plot[[1]][[2]], trees)*100)
@@ -362,7 +362,7 @@ png(filename = "Documents/Harvati_Reanalysis_Manuscript/figures/figure1.png", wi
   col_right[col_right == 0] <- 1
   col_right <- colfunc(100)[col_right]
   col_right[is.na(col_right)] <- colfunc(100)[1]
-  nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=2.5, which = "right")
+  nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=3.5, which = "right")
   
   title("       Molecular                                          Morphological", cex.main = 3, line = -0.1)
   title(paste0("RF-Distance = ", RF.dist(mol_tree, spOnly)), cex.main = 1.75, line = -1.2)
@@ -419,7 +419,7 @@ for(i in 1:1){
   col_left[col_left == 0] <- 1
   col_left <- colfunc(100)[col_left]
   col_left[is.na(col_left)] <- colfunc(100)[1]
-  nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=2.5, which = "left")
+  nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=3.5, which = "left")
   
   if(!plot_pop_tree){
     col_right <- as.integer(internal_nodes_probs(coph_plot[[1]][[2]], mkTrees_RAW_nhp)*100)
@@ -430,7 +430,7 @@ for(i in 1:1){
   col_right[col_right == 0] <- 1
   col_right <- colfunc(100)[col_right]
   col_right[is.na(col_right)] <- colfunc(100)[1]
-  nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=2.5, which = "right")
+  nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=3.5, which = "right")
   
   title("       Molecular                                          Morphological", cex.main = 3, line = -0.1)
   title(paste0("RF-Distance = ", RF.dist(mol_tree, spOnly)), cex.main = 1.75, line = -1.2)
@@ -487,7 +487,7 @@ for(i in 1:1){
   col_left[col_left == 0] <- 1
   col_left <- colfunc(100)[col_left]
   col_left[is.na(col_left)] <- colfunc(100)[1]
-  nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=2.5, which = "left")
+  nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=3.5, which = "left")
   
   if(!plot_pop_tree){
     col_right <- as.integer(internal_nodes_probs(coph_plot[[1]][[2]], mkTrees_PCA_nhp)*100)
@@ -498,7 +498,7 @@ for(i in 1:1){
   col_right[col_right == 0] <- 1
   col_right <- colfunc(100)[col_right]
   col_right[is.na(col_right)] <- colfunc(100)[1]
-  nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=2.5, which = "right")
+  nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=3.5, which = "right")
   
   title("       Molecular                                          Morphological", cex.main = 3, line = -0.1)
   title(paste0("RF-Distance = ", RF.dist(mol_tree, spOnly)), cex.main = 1.75, line = -1.2)
@@ -556,7 +556,7 @@ for(i in 1:1){
   col_left[col_left == 0] <- 1
   col_left <- colfunc(100)[col_left]
   col_left[is.na(col_left)] <- colfunc(100)[1]
-  nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=2.5, which = "left")
+  nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=3.5, which = "left")
   
   if(!plot_pop_tree){
     col_right <- as.integer(internal_nodes_probs(coph_plot[[1]][[2]], jenks6Trees_PCA_nhp)*100)
@@ -567,7 +567,7 @@ for(i in 1:1){
   col_right[col_right == 0] <- 1
   col_right <- colfunc(100)[col_right]
   col_right[is.na(col_right)] <- colfunc(100)[1]
-  nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=2.5, which = "right")
+  nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=3.5, which = "right")
   
   title("       Molecular                                          Morphological", cex.main = 3, line = -0.1)
   title(paste0("RF-Distance = ", RF.dist(mol_tree, spOnly)), cex.main = 1.75, line = -1.2)
@@ -626,7 +626,7 @@ for(i in 1:1){
   col_left[col_left == 0] <- 1
   col_left <- colfunc(100)[col_left]
   col_left[is.na(col_left)] <- colfunc(100)[1]
-  nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=2.5, which = "left")
+  nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=3.5, which = "left")
   
   if(!plot_pop_tree){
     col_right <- as.integer(internal_nodes_probs(coph_plot[[1]][[2]], jenks2Trees_PCA_nhp)*100)
@@ -637,7 +637,7 @@ for(i in 1:1){
   col_right[col_right == 0] <- 1
   col_right <- colfunc(100)[col_right]
   col_right[is.na(col_right)] <- colfunc(100)[1]
-  nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=2.5, which = "right")
+  nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=3.5, which = "right")
   
   title("       Molecular                                          Morphological", cex.main = 3, line = -0.1)
   title(paste0("RF-Distance = ", RF.dist(mol_tree, spOnly)), cex.main = 1.75, line = -1.2)
@@ -689,7 +689,7 @@ for(i in 1:1){
   col_left[col_left == 0] <- 1
   col_left <- colfunc(100)[col_left]
   col_left[is.na(col_left)] <- colfunc(100)[1]
-  nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=2.5, which = "left")
+  nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=3.5, which = "left")
   
   if(!plot_pop_tree){
     col_right <- as.integer(internal_nodes_probs(coph_plot[[1]][[2]], jenks4Trees_PCA_nhp)*100)
@@ -700,7 +700,7 @@ for(i in 1:1){
   col_right[col_right == 0] <- 1
   col_right <- colfunc(100)[col_right]
   col_right[is.na(col_right)] <- colfunc(100)[1]
-  nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=2.5, which = "right")
+  nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=3.5, which = "right")
   
   title("       Molecular                                          Morphological", cex.main = 3, line = -0.1)
   title(paste0("RF-Distance = ", RF.dist(mol_tree, spOnly)), cex.main = 1.75, line = -1.2)
@@ -932,6 +932,13 @@ mol_tree_mcc <- maxCladeCred(tenk_trees_filtered)
 trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/infPriorsMoreProps/harvati_PCA_bothSexes_noHomopops_mvBM_PCA99_c1.trees")
 trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/infPriorsMoreProps/harvati_PCA_bothSexes_noHomopops_mvBM_PCA99_c2.trees")
 
+mk_trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/empirical_42traits_jenks_nohomopops_4_PCA99_MK_trees_run_1.trees")
+mk_trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/empirical_42traits_jenks_nohomopops_4_PCA99_MK_trees_run_2.trees")
+
+freek_trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/empirical_42traits_jenks_nohomopops_4_PCA99_trees_run_1.trees")
+freek_trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/empirical_42traits_jenks_nohomopops_4_PCA99_trees_run_2.trees")
+
+
 # trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_noHomopops_fixRM_PCA99_c1.trees")
 # trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/harvati_PCA_noHomopops_fixRM_PCA99_c2.trees")
 
@@ -944,15 +951,33 @@ upgma_tree <- read.tree("/Volumes/1TB/Harvati_Empirical/output/empirical_PCA99_u
 # trees1 <- read.tree("output/harvati_noPCA_c1.trees") 
 # trees2 <- read.tree("output/harvati_noPCA_c2.trees")
 
-trees <- c(trees1, trees2)
+trees <- mvBM_trees <- c(trees1, trees2)
+mk_trees <- c(mk_trees1, mk_trees2)
+freek_trees <- c(freek_trees1, freek_trees2)
 
 tiplabs <- trees[[1]]$tip.label
-comparison <- compareTrees(prop.part.df(trees1), prop.part.df(trees2), tiplabs)
-plot(comparison, main = "same analysis comparetrees")
-RF.dist(maxCladeCred(trees1), maxCladeCred(trees2))
+comparison <- compareTrees(prop.part.df(mvBM_trees1), prop.part.df(mvBM_trees2), tiplabs)
+plot(comparison, main = paste0("same analysis comparetrees, r^2 = ", round(cor(comparison)[1,2]^2, digits = 3)))
 
-test_mcc <- maxCladeCred(trees) 
-test_gct <- greedyCT(trees)
+comparison <- compareTrees(prop.part.df(mk_trees1), prop.part.df(mk_trees2), tiplabs)
+plot(comparison, main = paste0("same analysis comparetrees, r^2 = ", round(cor(comparison)[1,2]^2, digits = 3)))
+
+comparison <- compareTrees(prop.part.df(freek_trees1), prop.part.df(freek_trees2), tiplabs)
+plot(comparison, main = paste0("same analysis comparetrees, r^2 = ", round(cor(comparison)[1,2]^2, digits = 3)))
+
+RF.dist(maxCladeCred(trees1), maxCladeCred(trees2))
+RF.dist(greedyCT(mk_trees1), greedyCT(mk_trees2))
+RF.dist(greedyCT(freek_trees1), greedyCT(freek_trees2))
+
+mvBM_mcc <- maxCladeCred(trees) 
+mvBM_gct <- greedyCT(trees)
+
+mk_mcc <- maxCladeCred(mk_trees) 
+mk_gct <- greedyCT(mk_trees)
+
+freek_mcc <- maxCladeCred(freek_trees) 
+freek_gct <- greedyCT(freek_trees)
+
 
 outg <- as.character(unlist(sapply(c("Macaca", "Mandrillus", "Papio"), function(genus) test_mcc$tip.label[grepl(genus, test_mcc$tip.label)])))
 test_mcc <- reroot(tree = test_mcc, node.number = getMRCA(test_mcc, outg), position = 
@@ -963,83 +988,532 @@ sapply(1:21, function(x) nodeheight(mol_tree_mcc, x))
 
 #write the 10k tree for mvBM rate matrix estimation
 #but first add a bit of branch length to the kinda baboon and cynocephalus
-write.tree(mol_tree_mcc, file = "/Volumes/1TB/Harvati_Empirical/data2_neanF/mol_tree_mcc.nex")
-mol_tree_mcc_noNean <- drop.tip(mol_tree_mcc, "Homo_neanderthalensis")
-write.tree(mol_tree_mcc_noNean, file = "/Volumes/1TB/Harvati_Empirical/data2_neanF/mol_tree_mcc_noNean.nex")
+# write.tree(mol_tree_mcc, file = "/Volumes/1TB/Harvati_Empirical/data2_neanF/mol_tree_mcc.nex")
+# mol_tree_mcc_noNean <- drop.tip(mol_tree_mcc, "Homo_neanderthalensis")
+# write.tree(mol_tree_mcc_noNean, file = "/Volumes/1TB/Harvati_Empirical/data2_neanF/mol_tree_mcc_noNean.nex")
 
 plot(test_gct)
 plot(test_mcc)
 
-RF.dist(test_gct, mol_tree_gct)
-RF.dist(test_mcc, mol_tree_gct)
+RF.dist(mvBM_gct, mol_tree_gct)
+RF.dist(mvBM_mcc, mol_tree_gct)
+RF.dist(mk_mcc, mol_tree_gct)
+RF.dist(mk_gct, mol_tree_gct)
+RF.dist(freek_mcc, mol_tree_gct)
+RF.dist(freek_gct, mol_tree_gct)
 RF.dist(upgma_tree, mol_tree_gct)
 RF.dist(nj_tree, mol_tree_gct, normalize = F)
 RF.dist(DC_MP_tree, mol_tree_gct, normalize = F)
-table(sapply(1:length(trees), function(tree) RF.dist(trees[tree], mol_tree_gct))) / length(trees) * 100
+
+all_candidate_trees <- c(molecular_tree = mol_tree_gct, mvBM = mvBM_mcc, mk = mk_mcc, freek = freek_mcc, nj = nj_tree, upgma = upgma_tree, max_parsimony = DC_MP_tree)
+
+round(as.matrix(RF.dist(all_candidate_trees, normalize = T)), 2)
+
+par(mfrow = c(3,1))
+plot(table(sapply(1:length(trees), function(tree) 
+  round(RF.dist(trees[tree], mol_tree_gct, normalize = T), 2))) / length(trees) * 100, xlim = c(0,1), xlab = "", ylab = "")
+title("multivariate Brownian motion")
+plot(table(sapply(1:length(mk_trees), function(tree) 
+  round(RF.dist(mk_trees[tree], mol_tree_gct, normalize = T), 2))) / length(mk_trees) * 100, xlim = c(0,1), xlab = "", ylab = "percent", cex.lab = 1.5)
+title("MK-model")
+plot(table(sapply(1:length(mk_trees), function(tree) 
+  round(RF.dist(freek_trees[tree], mol_tree_gct, normalize = T), 2))) / length(freek_trees) * 100, xlim = c(0,1), xlab = "normalized RF-distance", ylab = "", cex.lab = 1.5)
+title("ordered free-K model")
 
 
 table(sapply(1:length(trees), function(tree) RF.dist(trees[tree], mol_tree_gct)))
 
+par(mfrow = c(1,1))
 comparison <- compareTrees(prop.part.df(tenk_trees_filtered), prop.part.df(trees), tiplabs)
-plot(comparison, main = "difft analysis comparetrees", xlab = "molecular")
+plot(comparison, main = "mvBM analysis comparetrees", xlab = "molecular", ylab = "morphological")
+
+##############################################
+### Getting species-only analyses in there ###
+##############################################
+
+# load("tenk_trees_filtered")
+# tenk_trees_filtered_spOnly <- tenk_trees_filtered
+# for(i in 1:length(tenk_trees_filtered_spOnly)){
+#   tr <- tenk_trees_filtered_spOnly[[i]]
+#   tips_to_drop <- c("Gorilla_gorilla_beringei", "Pan_troglodytes_schweinfurthii", "Pan_troglodytes_verus", "Papio_hamadryas_anubis", "Papio_hamadryas_cynocephalus",
+#                     "Papio_hamadryas_papio", "Papio_hamadryas_ursinus", "Papio_hamadryas_kindae")      
+#   tr <- drop.tip(tr, tips_to_drop)
+#   tip_names_subsp <- tr$tip.label
+#   tip_names_subsp <- as.vector(sapply(tip_names_subsp, function(tipname) paste0(strsplit(tipname, "_")[[1]][1:2], collapse = "_")))
+#   tr$tip.label <- tip_names_subsp
+#   tenk_trees_filtered_spOnly[[i]] <- tr
+# }
+# mol_tree_mcc_spOnly <- maxCladeCred(tenk_trees_filtered_spOnly)
+# mol_tree_mcc_spOnly_noNean <- drop.tip(mol_tree_mcc_spOnly, "Homo_neanderthalensis")
+# sapply(1:21, function(x) nodeheight(mol_tree_mcc_spOnly, x))[1:length(mol_tree_mcc_spOnly$tip.label)]
+# # write.tree(mol_tree_mcc_spOnly, file = "/Volumes/1TB/Harvati_Empirical/data2_neanF/mol_tree_mcc_spOnly.nex")
+# # write.tree(mol_tree_mcc_spOnly_noNean, file = "/Volumes/1TB/Harvati_Empirical/data2_neanF/mol_tree_mcc_spOnly_noNean.nex")
+# save(tenk_trees_filtered_spOnly, file = "tenk_trees_filtered_spOnly")
+
+load("tenk_trees_filtered_spOnly")
+mol_tree_mcc_spOnly <- maxCladeCred(tenk_trees_filtered_spOnly)
+
+uvBM_trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/justSpecies/harvati_PCA_bothSexes_noHomopops_justSpecies_uvBM_PCA99_c1.trees")
+uvBM_trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/justSpecies/harvati_PCA_bothSexes_noHomopops_justSpecies_uvBM_PCA99_c2.trees")
+
+mvBM_trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/justSpecies/harvati_PCA_bothSexes_noHomopops_justSpecies_inf_mvBM_PCA99_c1.trees")
+mvBM_trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/justSpecies/harvati_PCA_bothSexes_noHomopops_justSpecies_inf_mvBM_PCA99_c2.trees")
+
+mvBM_trees <- c(mvBM_trees1, mvBM_trees2)
+uvBM_trees <- c(uvBM_trees1, uvBM_trees2)
+mvBM_tree_mcc <- (maxCladeCred(mvBM_trees))
+uvBM_tree_mcc <- (maxCladeCred(uvBM_trees))
+# mvBM_tree_gct <- (greedyCT(mvBM_trees))
+# uvBM_tree_gct <- (greedyCT(uvBM_trees))
+# plot(mcc_tree)
+# plot(mol_tree_mcc)
+RF.dist(mol_tree_mcc_spOnly, mvBM_mcc_tree, normalize = T)
+comparison <- compareTrees(prop.part.df(tenk_trees_filtered_spOnly), prop.part.df(trees), tiplabs)
+plot(comparison, main = "mvBM analysis comparetrees", xlab = "molecular", ylab = "morphological")
+table(sapply(1:length(trees), function(tree) RF.dist(trees[tree], mol_tree_mcc_spOnly, normalize = T)))
+
+mk_trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/empirical_39traits_jenks_noHomoPops_justSpecies_4_PCA99_MK_trees_run_1.trees")
+mk_trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/empirical_39traits_jenks_noHomoPops_justSpecies_4_PCA99_MK_trees_run_2.trees")
+mk_trees <- c(mk_trees1, mk_trees2)
+mk_tree_mcc <- maxCladeCred(mk_trees)
+
+freek_trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/empirical_39traits_jenks_noHomoPops_justSpecies_4_PCA99_trees_run_1.trees")
+freek_trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/empirical_39traits_jenks_noHomoPops_justSpecies_4_PCA99_trees_run_2.trees")
+freek_trees <- c(freek_trees1, freek_trees2)
+freek_tree_mcc <- maxCladeCred(freek_trees)
+
+DC_MP_tree <- read.tree("/Volumes/1TB/Harvati_Empirical/output/justSpecies/maximumParsimonyTree_empirical_noHomoPops_justSpecies_PCA99_divergenceCoding.txt")
+nj_tree <- read.tree("/Volumes/1TB/Harvati_Empirical/output/justSpecies/empirical_PCA99_neighborJoining.txt")
+upgma_tree <- read.tree("/Volumes/1TB/Harvati_Empirical/output/justSpecies/empirical_PCA99_upgma.txt")
+
+# mvBM_tree_gct <- (greedyCT(trees))
+# mk_tree_gct <- greedyCT(mk_trees)
+# freek_tree_gct <- greedyCT(freek_trees)
+
+#reroot all unrooted trees
+outg <- as.character(unlist(sapply(c("Macaca", "Mandrillus", "Papio"), function(genus) mvBM_tree_mcc$tip.label[grepl(genus, mvBM_tree_mcc$tip.label)])))
+mvBM_tree_mcc <- reroot(tree = mvBM_tree_mcc, node.number = getMRCA(mvBM_tree_mcc, outg), position = 
+                          mvBM_tree_mcc$edge.length[which(mvBM_tree_mcc$edge[,2] ==  getMRCA(mvBM_tree_mcc, outg))] / 2); plot(mvBM_tree_mcc)
+uvBM_tree_mcc <- reroot(tree = uvBM_tree_mcc, node.number = getMRCA(uvBM_tree_mcc, outg), position = 
+                          uvBM_tree_mcc$edge.length[which(uvBM_tree_mcc$edge[,2] ==  getMRCA(uvBM_tree_mcc, outg))] / 2); plot(uvBM_tree_mcc)
+mk_tree_mcc <- reroot(tree = mk_tree_mcc, node.number = getMRCA(mk_tree_mcc, outg), position = 
+                          mk_tree_mcc$edge.length[which(mk_tree_mcc$edge[,2] ==  getMRCA(mk_tree_mcc, outg))] / 2); plot(mk_tree_mcc)
+freek_tree_mcc <- reroot(tree = freek_tree_mcc, node.number = getMRCA(freek_tree_mcc, outg), position = 
+                          freek_tree_mcc$edge.length[which(freek_tree_mcc$edge[,2] ==  getMRCA(freek_tree_mcc, outg))] / 2); plot(freek_tree_mcc)
+
+
+
+nj_tree <- reroot(tree = nj_tree, node.number = getMRCA(nj_tree, outg), position = 
+                          nj_tree$edge.length[which(nj_tree$edge[,2] ==  getMRCA(nj_tree, outg))] / 2); plot(nj_tree)
+DC_MP_tree <- reroot(tree = DC_MP_tree, node.number = getMRCA(DC_MP_tree, outg), position = 
+                          DC_MP_tree$edge.length[which(DC_MP_tree$edge[,2] ==  getMRCA(DC_MP_tree, outg))] / 2); plot(DC_MP_tree)
+
+
+mvBM_RFdists <- sapply(1:length(mvBM_trees), function(tree) round(RF.dist(mvBM_trees[tree], mol_tree_mcc_spOnly, normalize = T), 2))
+mvBM_table <- table(mvBM_RFdists) / length(mvBM_trees) * 100
+uvBM_RFdists <- sapply(1:length(uvBM_trees), function(tree) round(RF.dist(uvBM_trees[tree], mol_tree_mcc_spOnly, normalize = T), 2))
+uvBM_table <- table(uvBM_RFdists) / length(uvBM_trees) * 100
+mk_RFdists <- sapply(1:length(mk_trees), function(tree) round(RF.dist(mk_trees[tree], mol_tree_mcc_spOnly, normalize = T), 2))
+mk_table <- table(mk_RFdists) / length(mk_trees) * 100
+freek_RFdists <- sapply(1:length(mk_trees), function(tree) round(RF.dist(freek_trees[tree], mol_tree_mcc_spOnly, normalize = T), 2))
+freek_table <- table(freek_RFdists) / length(freek_trees) * 100
+
+par(mfrow = c(4,1))
+plot(mvBM_table, xlim = c(0,1), xlab = "normalized RF-Distance", ylab = "percent", ylim = c(0,50), cex.lab = 1.5)
+legend(x = "topright", legend = paste0("µ = ", round(mean(mvBM_RFdists), 3), ", σ = ", round(sd(mvBM_RFdists), 3)))
+title("multivariate Brownian motion")
+plot(uvBM_table, xlim = c(0,1), xlab = "", ylab = "percent", ylim = c(0,50), cex.lab = 1.5)
+title("univariate Brownian motion")
+plot(mk_table, xlim = c(0,1), xlab = "", ylab = "percent", cex.lab = 1.5, ylim = c(0,50), cex.lab = 1.5)
+title("MK-model")
+plot(freek_table, xlim = c(0,1), xlab = "normalized RF-distance", ylab = "percent", cex.lab = 1.5, ylim = c(0,50))
+title("ordered free-K model")
+
+sum(as.numeric(mvBM_table) / 100 * as.numeric(attr(mvBM_table, "dimnames")[[1]]))
+sum(as.numeric(mk_table) / 100 * as.numeric(attr(mk_table, "dimnames")[[1]]))
+sum(as.numeric(freek_table) / 100 * as.numeric(attr(freek_table, "dimnames")[[1]]))
+
+all_candidate_trees_mcc <- c(molecular_tree = mol_tree_mcc_spOnly, mvBM = mvBM_mcc_tree, uvBM = uvBM_mcc_tree, mk = mk_tree_mcc, freek = freek_tree_mcc, nj = nj_tree, upgma = upgma_tree, max_parsimony = DC_MP_tree)
+all_candidate_trees_gct <- c(molecular_tree = mol_tree_mcc_spOnly, mvBM = mvBM_tree_gct, uvBM = uvBM_tree_gct, mk = mk_tree_gct, freek = freek_tree_gct, nj = nj_tree, upgma = upgma_tree, max_parsimony = DC_MP_tree)
+
+round(as.matrix(RF.dist(all_candidate_trees_mcc, normalize = T)), 2)
+round(as.matrix(RF.dist(all_candidate_trees_gct, normalize = T)), 2)
 
 #######################################
 ### MAKING THE FINAL SET OF FIGURES ###
 #######################################
 
-coph_plot <- cophylo(mol_tree, spOnly, rotate = T)
-
-#vs the mvBM tree
-plot_pop_tree <- T
-for(i in 1:1){
-  png(filename = "Documents/Harvati_Reanalysis_Manuscript/figures/figure1.png", width = 1600, height = 800)
-  if(plot_pop_tree){
-    plot.cophylo(coph_plot_hp, mar=c(5,0,2,0), lwd = 4,  fsize = c(2,1.75), link.lwd=4)
-  } else {
-    plot.cophylo(coph_plot, mar=c(5,0,2,0), lwd = 4,  fsize = 2, link.lwd=4)
-  }
-  # df(); plot.cophylo(coph_plot)
-  par(xpd=TRUE)
-  
-  if(!plot_pop_tree){
-    col_left <- as.integer(internal_nodes_probs(coph_plot[[1]][[1]], trees)*100)
-  } else {
-    col_left <- as.integer(internal_nodes_probs(coph_plot_hp[[1]][[1]], trees)*100)
-  }
-  
-  col_left[1] <- 100
-  col_left[col_left == 0] <- 1
-  col_left <- colfunc(100)[col_left]
-  col_left[is.na(col_left)] <- colfunc(100)[1]
-  nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=2.5, which = "left")
-  
-  if(!plot_pop_tree){
-    col_right <- as.integer(internal_nodes_probs(coph_plot[[1]][[2]], trees)*100)
-  } else {
-    col_right <- as.integer(internal_nodes_probs(coph_plot_hp[[1]][[2]], trees_hp)*100)
-  }
-  col_right[1] <- 100
-  col_right[col_right == 0] <- 1
-  col_right <- colfunc(100)[col_right]
-  col_right[is.na(col_right)] <- colfunc(100)[1]
-  nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=2.5, which = "right")
-  
-  title("       Molecular                                          Morphological", cex.main = 3, line = -0.1)
-  title(paste0("RF-Distance = ", RF.dist(mol_tree, spOnly)), cex.main = 1.75, line = -1.2)
-  
-  xl <- -0.3; yb <- -0.115; xr <- 0.3; yt <- -0.065; 
-  rect(
-    head(seq(xl,xr,(xr-xl)/100),-1),
-    yb,
-    tail(seq(xl,xr,(xr-xl)/100),-1),
-    yt,
-    col=colfunc(100)
-  )
-  text(labels = seq(from = 0, to = 1, length.out = 11), y = yb-(yt-yb)/2.5, x = seq(xl,xr,length.out = 11), las=2, cex=1.5)
-  text(labels = "posterior probability", x = (xl+xr)/2, y = yt+(yt-yb)/2.5, font = 2, cex = 2)
-  
-  dev.off()
+colfunc <- colorRampPalette(c("white", "black"))
+discretizeContData <- function(data, range = c(0,1), bins = 10){
+  bintervals <- seq(from = range[1], to = range[2], length.out = bins+1)
+  binMeans <- bintervals[-1] + diff(bintervals) / 2 - bintervals[2]
+  discrData <- sapply(data, function(num) sum(num - bintervals > 0))
+  discrFreqs <- sapply(1:bins, function(bin) sum(discrData == bin))
+  discrFreqs <- discrFreqs / sum(discrFreqs)
+  return(rbind(freqs = discrFreqs, binLocations = binMeans))
 }
-clade_prob(c("Macaca_fa", "Macaca_mu"), trees)
-clade_prob(c("Homo", "Pan"), trees)
-clade_prob(c("Pan"), trees)
+
+coph_plot_mvBM <- cophylo(mol_tree_mcc_spOnly, mvBM_tree_mcc, rotate = T)
+mol_tree_mcc_spOnly <- (coph_plot_mvBM$trees[[1]])
+coph_plot_uvBM <- cophylo(mol_tree_mcc_spOnly, uvBM_tree_mcc, rotate = T)
+coph_plot_mk <- cophylo(mol_tree_mcc_spOnly, mk_tree_mcc, rotate = T)
+coph_plot_freek <- cophylo(mol_tree_mcc_spOnly, freek_tree_mcc, rotate = T)
+
+comparison_mvBM <- compareTrees(prop.part.df(mvBM_trees), prop.part.df(tenk_trees_filtered_spOnly), tiplabs)
+comparison_uvBM <- compareTrees(prop.part.df(uvBM_trees), prop.part.df(tenk_trees_filtered_spOnly), tiplabs)
+comparison_mk <- compareTrees(prop.part.df(mk_trees), prop.part.df(tenk_trees_filtered_spOnly), tiplabs)
+comparison_freek <- compareTrees(prop.part.df(freek_trees), prop.part.df(tenk_trees_filtered_spOnly), tiplabs)
+
+########################################
+########################################
+############### FIGURE 1 ###############
+########################################
+########################################
+
+png(filename = "Documents/Harvati_Reanalysis_Manuscript/figures/figure1_final.png", width = 2800, height = 3000)
+# par(mfrow = c(4, 3))
+
+
+layout(matrix(c(1,1,1,1,1,2,2,2,3,3,3,4,4,4,4,4,5,5,5,6,6,6,7,7,7,7,7,8,8,8,9,9,9,10,10,10,10,10,11,11,11,12,12,12), nrow = 4, ncol = 11, byrow = TRUE))
+
+##########################
+#### vs the mvBM tree ####
+##########################
+
+#cophylo
+plot.cophylo(coph_plot_mvBM, mar=c(1,1,4,1), lwd = 4.5, fsize = 3.5, link.lwd=4)
+
+par(xpd=TRUE)
+col_left <- as.integer(internal_nodes_probs(coph_plot_mvBM[[1]][[1]], mvBM_trees)*100)
+col_left[1] <- 100
+col_left[col_left == 0] <- 1
+col_left <- colfunc(100)[col_left]
+col_left[is.na(col_left)] <- colfunc(100)[1]
+nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=3.5, which = "left")
+
+col_right <- as.integer(internal_nodes_probs(coph_plot_mvBM[[1]][[2]], trees)*100)
+col_right[1] <- 100
+col_right[col_right == 0] <- 1
+col_right <- colfunc(100)[col_right]
+col_right[is.na(col_right)] <- colfunc(100)[1]
+nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=3.5, which = "right")
+
+title("       Molecular                         Morphological", cex.main = 4.5, line = -0.1)
+title(paste0("RF-Distance = ", RF.dist(mol_tree_mcc_spOnly, mvBM_tree_mcc, normalize = T)), cex.main = 2.75, line = -1.2)
+
+box(which = "figure", lty = 5)
+text(labels = "a)", cex = textsiz, x = 0.53, y = 1.065, xpd = T, font = 4, col = "darkred")
+text(labels = "mvBM", cex = textsiz, x = -0.5, y = 1, xpd = T, font = 4, srt = 90, col = "darkred")
+segments(x0 = -0.485, x1 = -0.485, y0 = 0.925, y1 = 1.075, lwd = 3)
+
+#comparetrees
+par(mar=c(7,8,8,2))
+plot(comparison_mvBM[,1], comparison_mvBM[,2] + 1/3, main = "Compare-Trees Plot and Histogram", xlab = "", ylab = "", xaxt = "n", yaxt = "n", 
+     cex.axis = 3, cex.main = 4.5, pch = 16, cex = 5, col = rgb(0,0,0,0.5), xlim = c(0,1), ylim = c(0,1+1/3))
+box(lwd=3)
+title(ylab = "molecular", xlab = "morphological", cex.lab = 4, line = 5)
+axis(1, at = 0:5/5, labels = rep("", 6), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 0:5/5, side = 1, at = 0:5/5, cex = 2, line = 2.25)
+axis(2, at = 0:5/5 + 1/3, labels =  rep("", 6), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 0:5/5, side = 2, at = 0:5/5 + 1/3, cex = 2, line = 2)
+segments(x0 = 0, x1 = 1, y0 = 1/3, y1 = 4/3, lwd  = 3, lty = 2)
+
+#hists
+par(xpd=F)
+abline(h = 0.25, lty = 3, lwd = 3)
+axis(2, at = 0:4/5/4, labels =  rep("", 5), lwd = 4, cex.axis = 3, tck = -0.0075)
+mtext(text = 0:4/4, side = 2, at = 0:4/5/4, cex = 1.25, line = 1, las=2)
+
+highprobs <- discretizeContData(comparison_mvBM[comparison_mvBM[,2] > 0.5,1])
+lowprobs <- discretizeContData(comparison_mvBM[comparison_mvBM[,2] < 0.5,1])
+width = 0.1
+for(i in 1:ncol(highprobs)){
+  rect(xleft = highprobs[2,i] - width/2, xright = highprobs[2,i] + width/2, ybottom = 0, ytop = highprobs[1,i] / 5,
+       col = rgb(0,0,0,0.5))
+}
+for(i in 1:ncol(lowprobs)){
+  rect(xleft = lowprobs[2,i] - width/2, xright = lowprobs[2,i] + width/2, ybottom = 0, ytop = lowprobs[1,i] / 5,
+       col = rgb(red = 1,1,1,0.5))
+}
+
+
+legend(x = c(0.325, 0.675), y = c(0.24, 0.12), 
+       legend = c("molecular probability < 0.5", "molecular probability > 0.5"), 
+       fill = c(rgb(red = 1,1,1,0.5), rgb(0,0,0,0.5)), cex = 1.8)
+
+text(labels = "b)", cex = textsiz, x = 1.0365, y = 1.51, xpd = T, font = 4, col = "darkred")
+box(which = "figure", lty = 5)
+
+#RF-dist of entire posterior
+plot(mvBM_table, xlim = c(0,1), xlab = "", ylab = "", ylim = c(0,50), 
+     cex.lab = 4, cex.axis = 3, lwd = 4.5, xaxt = "n", yaxt = "n", main = "RF-Distances from Molecular Tree", cex.main = 4.5)
+title(ylab = "percent", xlab = "normalized RF-Distance", cex.lab = 4, line = 5)
+axis(1, at = 1:7/10, labels = rep("", 7), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 1:7/10, side = 1, at = 1:7/10, cex = 2, line = 2.25)
+axis(2, at = 0:5*10, labels =  rep("", 6), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 0:5*10, side = 2, at = 0:5*10, cex = 2, line = 2)
+box(lwd=3)
+legend(x = "topright", legend = paste0("µ = ", "0.460", ", σ = ", round(sd(mvBM_RFdists), 3)), cex = 3, bty = "n") #round(mean(mvBM_RFdists), 3) chops off 0
+text(labels = "c)", cex = textsiz, x = 1.0365, y = 56.5, xpd = T, font = 4, col = "darkred")
+box(which = "figure", lty = 5)
+
+
+
+##########################
+#### vs the uvBM tree ####
+##########################
+
+#cophylo
+par(xpd=TRUE)
+plot.cophylo(coph_plot_uvBM, mar=c(1,1,4,1), lwd = 4.5, fsize = 3.5, link.lwd=4)
+
+col_left <- as.integer(internal_nodes_probs(coph_plot_uvBM[[1]][[1]], uvBM_trees)*100)
+col_left[1] <- 100
+col_left[col_left == 0] <- 1
+col_left <- colfunc(100)[col_left]
+col_left[is.na(col_left)] <- colfunc(100)[1]
+nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=3.5, which = "left")
+
+col_right <- as.integer(internal_nodes_probs(coph_plot_uvBM[[1]][[2]], trees)*100)
+col_right[1] <- 100
+col_right[col_right == 0] <- 1
+col_right <- colfunc(100)[col_right]
+col_right[is.na(col_right)] <- colfunc(100)[1]
+nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=3.5, which = "right")
+
+title("       Molecular                         Morphological", cex.main = 4.5, line = -0.1)
+title(paste0("RF-Distance = ", RF.dist(mol_tree_mcc_spOnly, uvBM_tree_mcc, normalize = T)), cex.main = 2.75, line = -1.2)
+
+box(which = "figure", lty = 5)
+text(labels = "uvBM", cex = textsiz, x = -0.5, y = 1, xpd = T, font = 4, srt = 90, col = "darkred")
+segments(x0 = -0.485, x1 = -0.485, y0 = 0.925, y1 = 1.075, lwd = 3)
+
+#comparetrees
+par(mar=c(7,8,8,2))
+plot(comparison_uvBM[,1], comparison_uvBM[,2] + 1/3, main = "Compare-Trees Plot and Histogram", xlab = "", ylab = "", xaxt = "n", yaxt = "n", 
+     cex.axis = 3, cex.main = 4.5, pch = 16, cex = 5, col = rgb(0,0,0,0.5), xlim = c(0,1), ylim = c(0,1+1/3))
+box(lwd=3)
+title(ylab = "molecular", xlab = "morphological", cex.lab = 4, line = 5)
+axis(1, at = 0:5/5, labels = rep("", 6), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 0:5/5, side = 1, at = 0:5/5, cex = 2, line = 2.25)
+axis(2, at = 0:5/5 + 1/3, labels =  rep("", 6), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 0:5/5, side = 2, at = 0:5/5 + 1/3, cex = 2, line = 2)
+segments(x0 = 0, x1 = 1, y0 = 1/3, y1 = 4/3, lwd  = 3, lty = 2)
+
+#hists
+par(xpd=F)
+abline(h = 0.25, lty = 3, lwd = 3)
+axis(2, at = 0:4/5/4, labels =  rep("", 5), lwd = 4, cex.axis = 3, tck = -0.0075)
+mtext(text = 0:4/4, side = 2, at = 0:4/5/4, cex = 1.25, line = 1, las=2)
+
+highprobs <- discretizeContData(comparison_uvBM[comparison_uvBM[,2] > 0.5,1])
+lowprobs <- discretizeContData(comparison_uvBM[comparison_uvBM[,2] < 0.5,1])
+width = 0.1
+for(i in 1:ncol(highprobs)){
+  rect(xleft = highprobs[2,i] - width/2, xright = highprobs[2,i] + width/2, ybottom = 0, ytop = highprobs[1,i] / 5,
+       col = rgb(0,0,0,0.5))
+}
+for(i in 1:ncol(lowprobs)){
+  rect(xleft = lowprobs[2,i] - width/2, xright = lowprobs[2,i] + width/2, ybottom = 0, ytop = lowprobs[1,i] / 5,
+       col = rgb(red = 1,1,1,0.5))
+}
+
+
+legend(x = c(0.325, 0.675), y = c(0.24, 0.12), 
+       legend = c("molecular probability < 0.5", "molecular probability > 0.5"), 
+       fill = c(rgb(red = 1,1,1,0.5), rgb(0,0,0,0.5)), cex = 1.8)
+
+box(which = "figure", lty = 5)
+
+#RF-dist of entire posterior
+plot(uvBM_table, xlim = c(0,1), xlab = "", ylab = "", ylim = c(0,50), 
+     cex.lab = 4, cex.axis = 3, lwd = 4.5, xaxt = "n", yaxt = "n", main = "RF-Distances from Molecular Tree", cex.main = 4.5)
+title(ylab = "percent", xlab = "normalized RF-Distance", cex.lab = 4, line = 5)
+axis(1, at = 1:7/10, labels = rep("", 7), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 1:7/10, side = 1, at = 1:7/10, cex = 2, line = 2.25)
+axis(2, at = 0:5*10, labels =  rep("", 6), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 0:5*10, side = 2, at = 0:5*10, cex = 2, line = 2)
+box(lwd=3)
+legend(x = "topright", legend = paste0("µ = ", round(mean(uvBM_RFdists), 3), ", σ = ", round(sd(uvBM_RFdists), 3)), cex = 3, bty = "n")
+box(which = "figure", lty = 5)
+
+
+
+##########################
+#### vs the mk tree ####
+##########################
+
+#cophylo
+par(xpd=TRUE)
+plot.cophylo(coph_plot_mk, mar=c(1,1,4,1), lwd = 4.5, fsize = 3.5, link.lwd=4)
+
+col_left <- as.integer(internal_nodes_probs(coph_plot_mk[[1]][[1]], mk_trees)*100)
+col_left[1] <- 100
+col_left[col_left == 0] <- 1
+col_left <- colfunc(100)[col_left]
+col_left[is.na(col_left)] <- colfunc(100)[1]
+nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=3.5, which = "left")
+
+col_right <- as.integer(internal_nodes_probs(coph_plot_mk[[1]][[2]], trees)*100)
+col_right[1] <- 100
+col_right[col_right == 0] <- 1
+col_right <- colfunc(100)[col_right]
+col_right[is.na(col_right)] <- colfunc(100)[1]
+nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=3.5, which = "right")
+
+title("       Molecular                         Morphological", cex.main = 4.5, line = -0.1)
+title(paste0("RF-Distance = ", RF.dist(mol_tree_mcc_spOnly, mk_tree_mcc, normalize = T)), cex.main = 2.75, line = -1.2)
+
+box(which = "figure", lty = 5)
+text(labels = "mk", cex = textsiz, x = -0.5, y = 1, xpd = T, font = 4, srt = 90, col = "darkred")
+segments(x0 = -0.485, x1 = -0.485, y0 = 0.95, y1 = 1.05, lwd = 3)
+
+#comparetrees
+par(mar=c(7,8,8,2))
+plot(comparison_mk[,1], comparison_mk[,2] + 1/3, main = "Compare-Trees Plot and Histogram", xlab = "", ylab = "", xaxt = "n", yaxt = "n", 
+     cex.axis = 3, cex.main = 4.5, pch = 16, cex = 5, col = rgb(0,0,0,0.5), xlim = c(0,1), ylim = c(0,1+1/3))
+box(lwd=3)
+title(ylab = "molecular", xlab = "morphological", cex.lab = 4, line = 5)
+axis(1, at = 0:5/5, labels = rep("", 6), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 0:5/5, side = 1, at = 0:5/5, cex = 2, line = 2.25)
+axis(2, at = 0:5/5 + 1/3, labels =  rep("", 6), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 0:5/5, side = 2, at = 0:5/5 + 1/3, cex = 2, line = 2)
+segments(x0 = 0, x1 = 1, y0 = 1/3, y1 = 4/3, lwd  = 3, lty = 2)
+
+#hists
+par(xpd=F)
+abline(h = 0.25, lty = 3, lwd = 3)
+axis(2, at = 0:4/5/4, labels =  rep("", 5), lwd = 4, cex.axis = 3, tck = -0.0075)
+mtext(text = 0:4/4, side = 2, at = 0:4/5/4, cex = 1.25, line = 1, las=2)
+
+highprobs <- discretizeContData(comparison_mk[comparison_mk[,2] > 0.5,1])
+lowprobs <- discretizeContData(comparison_mk[comparison_mk[,2] < 0.5,1])
+width = 0.1
+for(i in 1:ncol(highprobs)){
+  rect(xleft = highprobs[2,i] - width/2, xright = highprobs[2,i] + width/2, ybottom = 0, ytop = highprobs[1,i] / 5,
+       col = rgb(0,0,0,0.5))
+}
+for(i in 1:ncol(lowprobs)){
+  rect(xleft = lowprobs[2,i] - width/2, xright = lowprobs[2,i] + width/2, ybottom = 0, ytop = lowprobs[1,i] / 5,
+       col = rgb(red = 1,1,1,0.5))
+}
+
+
+legend(x = c(0.325, 0.675), y = c(0.24, 0.12), 
+       legend = c("molecular probability < 0.5", "molecular probability > 0.5"), 
+       fill = c(rgb(red = 1,1,1,0.5), rgb(0,0,0,0.5)), cex = 1.8)
+
+box(which = "figure", lty = 5)
+
+#RF-dist of entire posterior
+plot(mk_table, xlim = c(0,1), xlab = "", ylab = "", ylim = c(0,50), 
+     cex.lab = 4, cex.axis = 3, lwd = 4.5, xaxt = "n", yaxt = "n", main = "RF-Distances from Molecular Tree", cex.main = 4.5)
+title(ylab = "percent", xlab = "normalized RF-Distance", cex.lab = 4, line = 5)
+axis(1, at = 2:10/10, labels = rep("", 9), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 2:10/10, side = 1, at = 2:10/10, cex = 2, line = 2.25)
+axis(2, at = 0:5*10, labels =  rep("", 6), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 0:5*10, side = 2, at = 0:5*10, cex = 2, line = 2)
+box(lwd=3)
+legend(x = "topright", legend = paste0("µ = ", round(mean(mk_RFdists), 3), ", σ = ", round(sd(mk_RFdists), 3)), cex = 3, bty = "n")
+box(which = "figure", lty = 5)
+
+
+
+##########################
+#### vs the freek tree ####
+##########################
+
+#cophylo
+par(xpd=TRUE)
+plot.cophylo(coph_plot_freek, mar=c(8,1,4,1), lwd = 4.5, fsize = 3.5, link.lwd=4)
+
+col_left <- as.integer(internal_nodes_probs(coph_plot_freek[[1]][[1]], freek_trees)*100)
+col_left[1] <- 100
+col_left[col_left == 0] <- 1
+col_left <- colfunc(100)[col_left]
+col_left[is.na(col_left)] <- colfunc(100)[1]
+nodelabels.cophylo(pch=21, frame="none", bg=col_left, cex=3.5, which = "left")
+
+col_right <- as.integer(internal_nodes_probs(coph_plot_freek[[1]][[2]], trees)*100)
+col_right[1] <- 100
+col_right[col_right == 0] <- 1
+col_right <- colfunc(100)[col_right]
+col_right[is.na(col_right)] <- colfunc(100)[1]
+nodelabels.cophylo(pch=21, frame="none", bg=col_right, cex=3.5, which = "right")
+
+title("       Molecular                         Morphological", cex.main = 4.5, line = -0.1)
+title(paste0("RF-Distance = ", RF.dist(mol_tree_mcc_spOnly, freek_tree_mcc, normalize = T)), cex.main = 2.75, line = -1.2)
+
+box(which = "figure", lty = 5)
+text(labels = "ordered CTMC", cex = textsiz, x = -0.5, y = 0.9, xpd = T, font = 4, srt = 90, col = "darkred")
+segments(x0 = -0.485, x1 = -0.485, y0 = 0.725, y1 = 1.075, lwd = 3)
+
+
+xl <- -0.3; yb <- -0.115; xr <- 0.3; yt <- -0.065;
+rect(
+  head(seq(xl,xr,(xr-xl)/100),-1),
+  yb,
+  tail(seq(xl,xr,(xr-xl)/100),-1),
+  yt,
+  col=colfunc(100)
+)
+text(labels = seq(from = 0, to = 1, length.out = 11), y = yb-(yt-yb)/2.5, x = seq(xl,xr,length.out = 11), las=2, cex=2)
+text(labels = "posterior probability", x = (xl+xr)/2, y = yt+(yt-yb)/2.5, font = 2, cex = 2.5)
+
+# clade_prob(c("Macaca_fa", "Macaca_mu"), trees)
+# clade_prob(c("Homo", "Pan"), trees)
+# clade_prob(c("Pan"), trees)
+
+#comparetrees
+par(mar=c(7,8,8,2))
+plot(comparison_freek[,1], comparison_freek[,2] + 1/3, main = "Compare-Trees Plot and Histogram", xlab = "", ylab = "", xaxt = "n", yaxt = "n", 
+     cex.axis = 3, cex.main = 4.5, pch = 16, cex = 5, col = rgb(0,0,0,0.5), xlim = c(0,1), ylim = c(0,1+1/3))
+box(lwd=3)
+title(ylab = "molecular", xlab = "morphological", cex.lab = 4, line = 5)
+axis(1, at = 0:5/5, labels = rep("", 6), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 0:5/5, side = 1, at = 0:5/5, cex = 2, line = 2.25)
+axis(2, at = 0:5/5 + 1/3, labels =  rep("", 6), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 0:5/5, side = 2, at = 0:5/5 + 1/3, cex = 2, line = 2)
+segments(x0 = 0, x1 = 1, y0 = 1/3, y1 = 4/3, lwd  = 3, lty = 2)
+
+#hists
+par(xpd=F)
+abline(h = 0.25, lty = 3, lwd = 3)
+axis(2, at = 0:4/5/4, labels =  rep("", 5), lwd = 4, cex.axis = 3, tck = -0.0075)
+mtext(text = 0:4/4, side = 2, at = 0:4/5/4, cex = 1.25, line = 1, las=2)
+
+highprobs <- discretizeContData(comparison_freek[comparison_freek[,2] > 0.5,1])
+lowprobs <- discretizeContData(comparison_freek[comparison_freek[,2] < 0.5,1])
+width = 0.1
+for(i in 1:ncol(highprobs)){
+  rect(xleft = highprobs[2,i] - width/2, xright = highprobs[2,i] + width/2, ybottom = 0, ytop = highprobs[1,i] / 5,
+       col = rgb(0,0,0,0.5))
+}
+for(i in 1:ncol(lowprobs)){
+  rect(xleft = lowprobs[2,i] - width/2, xright = lowprobs[2,i] + width/2, ybottom = 0, ytop = lowprobs[1,i] / 5,
+       col = rgb(red = 1,1,1,0.5))
+}
+
+
+legend(x = c(0.325, 0.675), y = c(0.24, 0.12), 
+       legend = c("molecular probability < 0.5", "molecular probability > 0.5"), 
+       fill = c(rgb(red = 1,1,1,0.5), rgb(0,0,0,0.5)), cex = 1.8)
+
+box(which = "figure", lty = 5)
+
+#RF-dist of entire posterior
+plot(freek_table, xlim = c(0,1), xlab = "", ylab = "", ylim = c(0,50), 
+     cex.lab = 4, cex.axis = 3, lwd = 4.5, xaxt = "n", yaxt = "n", main = "RF-Distances from Molecular Tree", cex.main = 4.5)
+title(ylab = "percent", xlab = "normalized RF-Distance", cex.lab = 4, line = 5)
+axis(1, at = 1:8/10, labels = rep("", 8), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 1:8/10, side = 1, at = 1:8/10, cex = 2, line = 2.25)
+axis(2, at = 0:5*10, labels =  rep("", 6), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 0:5*10, side = 2, at = 0:5*10, cex = 2, line = 2)
+box(lwd=3)
+legend(x = "topright", legend = paste0("µ = ", round(mean(freek_RFdists), 3), ", σ = ", round(sd(freek_RFdists), 3)), cex = 3, bty = "n")
+box(which = "figure", lty = 5)
+
+dev.off()
+
+
+

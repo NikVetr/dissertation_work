@@ -153,33 +153,55 @@ internal_nodes_probs <- function(tree, trees_to_use){
 }
 startsWith2 <- function(x, pre){apply(sapply(1:length(pre), function(n) startsWith(x, pre[n])), 1, any)}
 
-
+#using the eigenvalue pseudocorrelation correction & a NJ tree
 trees1 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_fixRM_Bailey_PCA99_c1.trees")
 trees2 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_fixRM_Bailey_PCA99_c2.trees")
 
 trees1 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_fixCorrs_Bailey_PCA99_c1.trees")
 trees2 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_fixCorrs_Bailey_PCA99_c2.trees")
 
+trees1 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_Bailey_PCA99_c1.trees")
+trees2 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_Bailey_PCA99_c2.trees")
+
+#using the nearPD correction & a star tree
+trees1 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_fixRM_Bailey_nearPD_STAR_PCA95_c1.trees")
+trees2 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_fixRM_Bailey_nearPD_STAR_PCA95_c2.trees")
+
+trees1 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_fixCorrs_Bailey_nearPD_STAR_PCA95_c1.trees")
+trees2 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_fixCorrs_Bailey_nearPD_STAR_PCA95_c2.trees")
+
+trees1 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_Bailey_nearPD_STAR_PCA95_c1.trees")
+trees2 <- read.tree("/Volumes/macOS/Users/nikolai/output/infPriors_Bailey_nearPD_STAR_PCA95_c2.trees")
+
+#using the nearPD correction & a star tree & the corr = F option w/ 99% of the PC mass
+trees1 <- read.tree("/Volumes/1TB/Bailey/output/infPriors_fixRM_Bailey_nearPD_STAR_nearPDnc_PCA99_c1.trees")
+trees2 <- read.tree("/Volumes/1TB/Bailey/output/infPriors_fixRM_Bailey_nearPD_STAR_nearPDnc_PCA99_c2.trees")
+
+#using the nearPD correction, star tree, & corr = T... but only using 50 eigenvectors for computational convenience
+
+trees1 <- read.tree("/Volumes/1TB/Bailey/output/infPriors_fixRM_Bailey_nearPD_STAR_nearPDnc_50PCs_c1.trees")
+trees2 <- read.tree("/Volumes/1TB/Bailey/output/infPriors_fixRM_Bailey_nearPD_STAR_nearPDnc_50PCs_c2.trees")
 
 trees <- c(trees1, trees2)
 
+# for(i in 1:length(trees)){
+#   trees[i] <- midpoint(trees[i])
+# }
 
+par(mfrow = c(1,3))
 tiplabs <- trees[[1]]$tip.label
 comparison <- compareTrees(prop.part.df(trees1), prop.part.df(trees2), tiplabs)
-plot(comparison, main = "same analysis comparetrees")
+plot(comparison, main = "same analysis comparetrees"); abline(0,1)
 RF.dist(maxCladeCred(trees1), maxCladeCred(trees2))
 
 mcc_tree <- maxCladeCred(trees) 
-gct_tree <- greedyCT(trees)
+# gct_tree <- greedyCT(trees)
 
 # mcc_tree <- reroot(tree = mcc_tree, node.number = which(mcc_tree$tip.label == "NEAND"), 
 #                    position = mcc_tree$edge.length[which(mcc_tree$edge[,2] == which(mcc_tree$tip.label == "NEAND"))] / 2)
 mcc_tree <- midpoint(mcc_tree)
 
-plot(gct_tree)
-plot(mcc_tree)
+# plot(gct_tree)
+plot(mcc_tree, cex = 1.5)
 
-nodelabels(round(internal_nodes_probs(mcc_tree, trees) * 100, 2))
-
-RF.dist(test_gct, mol_tree_gct)
-RF.dist(test_mcc, mol_tree_gct)
+nodelabels(round(internal_nodes_probs(mcc_tree, unroot(trees)) * 100, 0), frame = "circle", bg = "white", cex = 1.25)

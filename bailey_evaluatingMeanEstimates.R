@@ -3,6 +3,7 @@ setwd("/Volumes/1TB/Bailey/")
 data_dir <- "data_joint_thresh_means/"
 data_dir <- "data/"
 data_files <- list.files(data_dir)
+data_files <- data_files[grep(data_files, pattern =  "Star")]
 data <- lapply(1:length(data_files), function(x) "placeholder")
 for(i in 1:length(data)){
   load(paste0(data_dir, data_files[i]))
@@ -86,20 +87,33 @@ for(i in 0:55){
   plot(njTree, main = paste0(PC_thresh * 100, "% of the variance represented"))
 }
 
-mahDistMat <- mahaMatrix(mean_of_means, as.matrix(Matrix::nearPD(mean_of_cors)$mat), squared = F)
+nearPD_Cor <- as.matrix(Matrix::nearPD(mean_of_cors, corr = F)$mat)
+mahDistMat <- mahaMatrix(mean_of_means, as.matrix(Matrix::nearPD(mean_of_cors, corr = T)$mat), squared = F)
 njTree <- ape::nj(mahDistMat)
 njTree <- phytools::reroot(tree = njTree, node.number = which(njTree$tip.label == "NEAND"), position = njTree$edge.length[which(njTree$edge[,2] == which(njTree$tip.label == "NEAND"))] / 2)
 plot(njTree)
 
-PC_thresh <- 0.99
+nearPD_Cor <- as.matrix(Matrix::nearPD(mean_of_cors, corr = F)$mat)
+eigensystem <- eigen(nearPD_Cor)
+plot(cumsum(eigensystem$values))
+# eigensystem <- eigen(mean_of_cors)
+PC_thresh <- 0.99; usePCthresh = F
+n_ev <- 50; useNEV = T
 PC_Scores <- t(eigensystem$vectors %*% t(mean_of_means))
 est_means_PCs <- sapply(1:which.max(cumsum(eigensystem$values)), function(ev) PC_Scores[,ev] / eigensystem$values[ev]^0.5)
-est_means_PCs <- est_means_PCs[,1:sum(cumsum(eigensystem$values / sum(eigensystem$values)) < PC_thresh)]
-mahDistMat <- mahaMatrix(est_means_PCs, diag(ncol(est_means_PCs)), squared = F)
+plot(apply(est_means_PCs, 2, var)[1:n_ev])
+if(usePCthresh){
+  est_means_PCs <- est_means_PCs[,1:sum(cumsum(eigensystem$values / sum(eigensystem$values)) < PC_thresh)]
+  mahDistMat <- mahaMatrix(est_means_PCs, diag(ncol(est_means_PCs)), squared = F)
+} else if(useNEV){
+  est_means_PCs <- est_means_PCs[,1:n_ev]
+  mahDistMat <- mahaMatrix(est_means_PCs, diag(ncol(est_means_PCs)), squared = F)
+}
 njTree <- ape::nj(mahDistMat)
 njTree <- phytools::reroot(tree = njTree, node.number = which(njTree$tip.label == "NEAND"), position = njTree$edge.length[which(njTree$edge[,2] == which(njTree$tip.label == "NEAND"))] / 2)
 njTree <- phytools::tipRotate(njTree, 1:length(njTree))
 plot(njTree, main = paste0(PC_thresh * 100, "% of the variance represented"))
+plot(phangorn::upgma(mahDistMat))
 
 meansNexus <- function (characterMatrix, outputFilePath, traitsOnColumns = T){
   if (traitsOnColumns) {ntax = dim(characterMatrix)[1]; nchar = dim(characterMatrix)[2]}
@@ -110,6 +124,9 @@ meansNexus <- function (characterMatrix, outputFilePath, traitsOnColumns = T){
   cat(";\nEnd;")
   sink()
 }
+
+meansNexus(est_means_PCs, outputFilePath = "/Volumes/1TB/Bailey/data/bailey_means_nearPD_STAR_nearPDnonCorr_50PCs.nex")
+
 
 nV <- eigensystem$vectors
 nL <- eigensystem$values

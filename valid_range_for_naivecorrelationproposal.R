@@ -82,7 +82,7 @@ png(filename = "/Users/nikolai/Documents/Harvati_Reanalysis_Manuscript/figures/e
 plot(dims, log10(apply(ranges, 2, mean)), ylim = c(-2.1,0.5),
      type = "l", xlab = "matrix dimensionality", 
      ylab = "expected interval width", cex.lab = 1.25, lwd = 3, bty = "n", col = "darkred", xaxt = "n", yaxt = "n")
-axis(side = 2, labels = c(2*2^(-(0:3)), sapply(-(4:10), function(i) as.expression(bquote(2^ .(i))))), at = log10(2*2^(-(0:10))), las = 2)
+axis(side = 2, labels = c(2*2^(-(0:3)), sapply(-(3:9), function(i) as.expression(bquote(2^ .(i))))), at = log10(2*2^(-(0:10))), las = 2)
 axis(side = 1, labels = -1:11*50, at = -1:11*50)
 dev.off()
 

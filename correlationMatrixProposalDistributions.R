@@ -904,7 +904,7 @@ rlkj <- function (K, eta = 1) {
       alpha <- alpha - 0.5
       y <- rbeta(1, m/2, alpha)
       z <- rnorm(m, 0, 1)
-      z <- z/sqrt(crossprod(z)[1])
+      z <- z/sqrt(crossprod(z)[1]) #unit hypersphere rescaling
       R[1:m, m + 1] <- sqrt(y) * z
       R[m + 1, m + 1] <- sqrt(1 - y)
     }
@@ -1000,6 +1000,42 @@ blooming_onion_tune_chol <- function (upper_cholesky_factor, ind, varN = 0.1, be
   return(list(sample = R, log_prop_ratio = log_prop_ratio))
 }
 
+plotMatrix <- function(mobject, size, location, lwd = 2, grid = T, font = 1, cex = 1, rownames = T, colnames = T, title = T, title.label = "Matrix Object"){
+  lines(rbind(location, location + c(0,size[2])), lwd = lwd)
+  lines(rbind(location, location + c(size[1]/8,0)), lwd = lwd)
+  lines(rbind(location + c(0, size[2]), location + c(size[1]/8,size[2])), lwd = lwd)
+  lines(rbind(location + c(size[1],0), location + size), lwd = lwd)
+  lines(rbind(location + size, location + size - c(size[1]/8,0)), lwd = lwd)
+  lines(rbind(location + c(size[1],0), location + c(size[1],0) - c(size[1]/8,0)), lwd = lwd)
+  if(grid == T){
+    for(i in 1:(dim(mobject)[1]-1)){
+      lines(rbind(location + c(0,i*size[2]/dim(mobject)[1]), location + c(size[1], i*size[2]/dim(mobject)[1])))
+    }
+    for(j in 1:(dim(mobject)[2]-1)){
+      lines(rbind(location + c(j*size[1]/dim(mobject)[2],0), location + c(j*size[1]/dim(mobject)[2], size[2])))
+    }
+  }
+  if(class(mobject[1,1]) != "expression" & class(mobject[1,1]) != "character"){mobject <- matrix(as.character(mobject), nrow = dim(mobject)[1], ncol = dim(mobject)[2])}
+  for(i in 1:(dim(mobject)[1])){
+    for(j in 1:dim(mobject)[2]){
+      text(labels = mobject[i,j], x = location[1] + (j-1/2)*size[1]/dim(mobject)[2], y = location[2] + size[2] - (i-1/2)*size[2]/dim(mobject)[1], font = font, cex = cex)
+    }
+  }
+  if(title){
+    text(title.label, x = location[1] + size[1]/2, y = location[2] + size[2] + strheight(title.label, font = 2, cex = 1.5)/1.5, cex = 1.5, font = 2)
+  }
+  if(rownames){
+    for(i in 1:dim(mobject)[1]){
+      text(rownames(mobject)[i], x = location[1] - strwidth(rownames(mobject)[i])/2 - size[1]/(ncol(mobject)*6), y = location[2] + size[2] - (i-1/2)*size[2]/dim(mobject)[2])
+    }
+  }
+  if(colnames){
+    for(i in 1:dim(mobject)[1]){
+      text(colnames(mobject)[i], x = location[1] + (i-1/2)*size[1]/dim(mobject)[1], y = location[2] - strheight(colnames(mobject)[i])/2- size[2]/(nrow(mobject)*6))
+    }
+  }
+}
+
 # dim <- 10
 # cormat <- rlkj(dim)
 # cholfac <- chol(cormat)
@@ -1009,23 +1045,26 @@ blooming_onion_tune_chol <- function (upper_cholesky_factor, ind, varN = 0.1, be
 set.seed(1)
 dim <- 10
 target_corr <- rlkj(dim, eta = 1)
+par(mfrow = c(1,1), mar = c(0,0,0,0))
+# plot(1:150, 1:150, col = "white", axes = F, xlab = "", ylab = ""); 
+# plotMatrix(mobject = round(target_corr, digits = 3), size = c(150,150), location = c(0,0), title.label = "", cex = 1.25)
 true_corrs <- target_corr[upper.tri(target_corr)]
 n_obs <- 50
-varN <- rep(0.005, dim)
-betaWindow <- 0.05
-sampleUniform <- F
+varN <- rep(0.5, dim)
+betaWindow <- 0.2
+sampleUniform <- T
 obs <- rmvnorm(n = n_obs, mean = rep(0, dim), sigma = target_corr)
 emp_corrs <- cor(obs)[upper.tri(diag(dim))]
 par(mfrow = c(ifelse(dim < 5, choose(dim, 2), 4), 2))
 
 
 corr_init <- chol(rlkj(dim))
-n_iter <- 1E7
-thin <- 1E3
+n_iter <- 1E9
+thin <- 1E4
 n_out <- round(n_iter/thin)
-tuning = T; tune_bouts = 20; tune_helper <- 2
+tuning = T; tune_bouts = 5; tune_helper <- 2
 target_accept_ratio = 0.234
-burnin_prop = 0.2
+burnin_prop = 0.6
 
 corr_mats <- replicate(n_out, diag(dim))
 corr_mats[,,1] <- corr_curr <-  corr_init
@@ -1138,30 +1177,36 @@ toc()
 
 corr_mats <- sapply(1:n_out, function(x) (t(corr_mats[,,x]) %*% corr_mats[,,x])[order(inds[,x]),order(inds[,x])], simplify = "array")
 # corr_mats <- sapply(1:n_out, function(x) (t(corr_mats[,,x]) %*% corr_mats[,,x]), simplify = "array")
+if(!sampleUniform){
+  save(file = "corr_mats", corr_mats)
+}
 
-corrs <- sapply(1:n_out, function(x) corr_mats[,,x][upper.tri(diag(dim))])
-ind_mat <- matrix(1:dim^2, dim, dim)
-target_ind_mat <- ind_mat[upper.tri(ind_mat)]
-ind_mat <- t(sapply(1:choose(dim, 2), function(x) which(ind_mat == target_ind_mat[x], arr.ind = T)))
-par(mfrow = c(3, 2))
-for(i in 1:choose(dim, 2)){
-  hist(corrs[i,][(n_out * burnin_prop) : n_out], breaks = 1E2, main = paste0("correlation betw. trait ", ind_mat[i,1], " and trait ", ind_mat[i,2]), xlim = c(-1,1));
-  if(i == 1){legend(x = "topright", lwd = 2, legend = c("true value", "observed value"), col = c("red", "purple"))}
-  abline(v = true_corrs[i], col = 2, lwd = 2); abline(v = emp_corrs[i], col = "purple", lwd = 2)
-  plot(corrs[i,], type = "l", ylim = c(-1,1)); lines(corrs[i,][1:(n_out * burnin_prop)], col = "grey"); abline(h = true_corrs[i], col = 2, lwd = 2); abline(h = emp_corrs[i], col = "purple", lwd = 2)
+if(!sampleUniform){
+  corrs <- sapply(1:n_out, function(x) corr_mats[,,x][upper.tri(diag(dim))])
+  ind_mat <- matrix(1:dim^2, dim, dim)
+  target_ind_mat <- ind_mat[upper.tri(ind_mat)]
+  ind_mat <- t(sapply(1:choose(dim, 2), function(x) which(ind_mat == target_ind_mat[x], arr.ind = T)))
+  par(mfrow = c(3, 2))
+  for(i in 1:choose(dim, 2)){
+    hist(corrs[i,][(n_out * burnin_prop) : n_out], breaks = 1E2, main = paste0("correlation betw. trait ", ind_mat[i,1], " and trait ", ind_mat[i,2]), xlim = c(-1,1));
+    if(i == 1){legend(x = "topright", lwd = 2, legend = c("true value", "observed value"), col = c("red", "purple"))}
+    abline(v = true_corrs[i], col = 2, lwd = 2); abline(v = emp_corrs[i], col = "purple", lwd = 2)
+    plot(corrs[i,], type = "l", ylim = c(-1,1)); lines(corrs[i,][1:(n_out * burnin_prop)], col = "grey"); abline(h = true_corrs[i], col = 2, lwd = 2); abline(h = emp_corrs[i], col = "purple", lwd = 2)
+  }
 }
 
 if(sampleUniform){
   eta <- 1
   
   par(mfrow = c(3, 2))
-  dets_samp <- (sapply(1:n_out, function(x) det(corr_mats[,,x])))[(n_out / 5) : n_out]
+  dets_samp <- (sapply(1:n_out, function(x) det(corr_mats[,,x])))[(n_out * burnin_prop) : n_out]
   hist(dets_samp, main = "Sampled Determinants")
   title(main = paste0("dimension = ", dim), outer = T, line = -2, cex.main = 2)
   
-  known_lkj_distribution <- aperm((rlkjcorr(n_out * 0.8, K = dim, eta = eta)), c(2,3,1))
-  corrs_targ <- sapply(1:(n_out * 0.8), function(x) known_lkj_distribution[,,x][upper.tri(diag(dim))])
-  dets_targ <- (sapply(1:(n_out * 0.8), function(x) det(known_lkj_distribution[,,x])))
+  size_lkj_targ <- 1E5
+  known_lkj_distribution <- aperm((rlkjcorr(size_lkj_targ, K = dim, eta = eta)), c(2,3,1))
+  corrs_targ <- sapply(1:size_lkj_targ, function(x) known_lkj_distribution[,,x][upper.tri(diag(dim))])
+  dets_targ <- (sapply(1:size_lkj_targ, function(x) det(known_lkj_distribution[,,x])))
   hist(dets_targ, main = "Target Determinants")
   
   plot(x = quantile(dets_samp, probs = c(1:99)/100),
@@ -1172,7 +1217,6 @@ if(sampleUniform){
   plot(x = quantile(as.vector(corrs), probs = c(1:99)/100),
        y = quantile(as.vector(corrs_targ), probs = c(1:99)/100),
        type = "l", main = "Q-Q Plot of Marginal Correlations", xlab = "samples", ylab = "target"); abline(a = 0, b = 1, lty = 2, col = 3)
-  legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,3), lty = c(1,2))
   legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,3), lty = c(1,2))
   
   hist(as.vector(corrs), main = "Marginal Sampled Correlations")
@@ -1296,7 +1340,7 @@ for(i in 2:n_iter){
   }
 }
 toc()
-
+save(file = "corr_mats_sw", corr_mats_sw)
 corrs_sw <- sapply(1:n_out, function(x) corr_mats_sw[,,x][upper.tri(diag(dim))])
 n_accept / n_prop
 par(mfrow = c(3, 2))
@@ -1309,8 +1353,31 @@ for(i in 1:choose(dim, 2)){
   lines(corrs_sw[i,], type = "l", ylim = c(-1,1), col = rgb(1,0,0,0.7)); lines(corrs_sw[i,][1:(n_out * burnin_prop)], col = "grey")
 }
 
-mean(sapply(1:nrow(corrs), function(param) coda::effectiveSize(corrs[param,(n_out * burnin_prop) : n_out])))
-mean(sapply(1:nrow(corrs_sw), function(param) coda::effectiveSize(corrs_sw[param,(n_out * burnin_prop) : n_out])))
+(sapply(1:nrow(corrs), function(param) coda::effectiveSize(corrs[param,(n_out * burnin_prop) : n_out])))
+(sapply(1:nrow(corrs_sw), function(param) coda::effectiveSize(corrs_sw[param,(n_out * burnin_prop) : n_out])))
 gelman.diag(as.mcmc.list(list(mcmc(t(corrs[,(n_out * burnin_prop) : n_out])), mcmc(t(corrs_sw[,(n_out * burnin_prop) : n_out])))))
 heidel.diag(as.mcmc.list(list(mcmc(t(corrs[,(n_out * burnin_prop) : n_out])), mcmc(t(corrs_sw[,(n_out * burnin_prop) : n_out])))))
+effectiveSize(as.mcmc.list(list(mcmc(t(corrs[,(n_out * burnin_prop) : n_out])), mcmc(t(corrs_sw[,(n_out * burnin_prop) : n_out])))))
+
+#compare percentiles of the two corrs and their covariances
+par(mfrow = c(1,2))
+plot(x = quantile(corrs[1,], probs = c(1:99)/100), xlab = "novel proposal distribution quantiles", ylab = "sliding window proposal distribution quantiles", 
+     xlim = c(min(corrs), max(corrs)), ylim = c(min(corrs_sw), max(corrs_sw)), xaxt = "n", yaxt = "n",
+     y = quantile(corrs_sw[1,], probs = c(1:99)/100), type = "l", col = rgb(0,0,0,0.5)); 
+axis(side = 2, labels = -10:10/10, at = -10:10/10)
+axis(side = 1, labels = -10:10/10, at = -10:10/10)
+for(i in 2:nrow(corrs)){
+  lines(x = quantile(corrs[i,], probs = c(1:99)/100),
+       y = quantile(corrs_sw[i,], probs = c(1:99)/100), col = rgb(0,0,0,0.5)); 
+}
+
+abline(a = 0, b = 1, lty = 2, col = 2, lwd = 1)
+legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,2), lty = c(1,2))
+title("quantile-quantile plot")
+
+plot(cov(t(corrs)), cov(t(corrs_sw)), pch = 16, col = rgb(0,0,0,0.75),
+     xlab = "novel proposal distribution variances and covariances", ylab = "sliding window proposal distribution variances and covariances")
+abline(a = 0, b = 1, lty = 2, col = 2, lwd = 2)
+title("variances and covariances plot")
+legend(x = "bottomright", legend = c("variances and covariances", "1-to-1 line"), col = c(rgb(0,0,0,0.75),2), lty=c(NA, 2), pch=c(16, NA))
 
