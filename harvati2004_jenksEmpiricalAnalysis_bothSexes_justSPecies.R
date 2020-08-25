@@ -151,6 +151,7 @@ jenks_exp_cats = 1
 print(jenks_exp_cats)
 which_ncats <- ncats_per_exp[,jenks_exp_cats]
 unique_ncats <- sort(unique(which_ncats))
+
 sink(paste0("data/", fileName, "_PCA", percPCA, "_jenks_", jenks_exp[jenks_exp_cats], "_expcats.txt"))
 cat(unique_ncats)
 sink()

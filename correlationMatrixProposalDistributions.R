@@ -1221,6 +1221,23 @@ if(sampleUniform){
   
   hist(as.vector(corrs), main = "Marginal Sampled Correlations")
   hist(as.vector(corrs_targ), main = "Marginal Target Correlations")
+  
+  #for paper appendix figure
+  par(mfrow = c(1, 2))
+  plot(x = quantile(dets_samp, probs = c(1:99)/100),
+       y = quantile(dets_targ, probs = c(1:99)/100),
+       type = "l", main = "Q-Q Plot of Determinants", xlab = "MCMC samples using novel proposal distribution", 
+       ylab = expression(paste("implied flat distribution: LKJ(", eta, " = 1)"))); 
+  abline(a = 0, b = 1, lty = 2, col = 3)
+  legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,3), lty = c(1,2))
+  
+  plot(x = quantile(as.vector(corrs), probs = c(1:99)/100),
+       y = quantile(as.vector(corrs_targ), probs = c(1:99)/100),
+       type = "l", main = "Q-Q Plot of Marginal Correlations", xlab = "MCMC samples using novel proposal distribution", 
+       ylab = expression(paste("implied flat distribution: LKJ(", eta, " = 1)"))); 
+  abline(a = 0, b = 1, lty = 2, col = 3)
+  legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,3), lty = c(1,2))
+  
 }
 
 paste0("acceptance ratio = ", n_accept / n_prop)

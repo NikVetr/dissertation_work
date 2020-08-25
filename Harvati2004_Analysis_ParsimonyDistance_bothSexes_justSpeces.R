@@ -2,7 +2,6 @@ setwd("/Volumes/1TB/Harvati_Empirical/")
 library(geomorph)
 library(Matrix)
 
-meanValueCodingDo <- T
 numStartingTrees <- 50 #number of independent random starting trees
 unchangedRun <- 500 #how long to keep the ratchet running without any improvement
 traceOutput <- 1 #should the parsimony ratchet output stuff to screen?
@@ -209,3 +208,56 @@ upgmaTree <- upgma(mahDistMat)
 write.tree(njTree, file = paste0("output/justSpecies/empirical_PCA", percPCA ,"_neighborJoining.txt"))
 write.tree(upgmaTree, file = paste0("output/justSpecies/empirical_PCA", percPCA ,"_upgma.txt"))
 
+
+#let's get the jenks analyses in there too using wagner parsimony
+fileName <- "harvati_empirical_noHomoPops_justSpecies"
+percPCA <- 99
+traitsPath_jenksCoding <- paste0("data/", fileName, "_PCA", percPCA, 
+                                 "_jenks_4_expcats_", 3, "_cats_traits.tsv")
+data = read.table(traitsPath_jenksCoding)
+traitsPath_jenksCoding <- paste0("data/", fileName, "_PCA", percPCA, 
+                                 "_jenks_4_expcats_", 4, "_cats_traits.tsv")
+data = cbind(data, read.table(traitsPath_jenksCoding)[,-1])
+traitsPath_jenksCoding <- paste0("data/", fileName, "_PCA", percPCA, 
+                                 "_jenks_4_expcats_", 5, "_cats_traits.tsv")
+data = cbind(data, read.table(traitsPath_jenksCoding)[,-1])
+rownames(data) <- data[,1]
+data <- data[,-1]
+data <- data + 1
+data <- as.matrix(data)
+
+#write distance matrix to file
+eucl <- F; univSlide <- T
+d <- data
+if(eucl){distmat <- stats::dist(d)}
+if(univSlide){
+  distmat_univ <- lapply(1:length(d[1,]), function(tr) stats::dist(d[,tr]))
+  distmat <- distmat_univ[[1]]
+  for(i in 2:length(distmat_univ)){
+    distmat <- distmat + distmat_univ[[i]]
+  }
+}
+distmat <- as.matrix(distmat)
+writeDist(distmat, file = paste0("output/justSpecies/parsDistances_empirical_",
+                                 ifelse(collapseHomo, "no", ""), "HomoPops_justSpecies_", "PCA", 99, "_jenksCoding.dist"))
+
+#conver to phyDat format
+jenks.pD <- phyDat(data, type = "USER", levels = 1:6)
+
+#use the parsimony ratchet to search for most parsimonious trees a number of times
+mpTrees <- list()
+for(sepStart in 1:numStartingTrees){
+  mpTree <- pratchet(jenks.pD, maxit = 1e5, method = "sankoff", k = unchangedRun, start = rtree(n = length(rownames(data)), tip.label = sample(rownames(data))), trace = traceOutput, all = T, cost = wagnerCostMatrix(6))
+  mpTreeScore <- parsimony(tree = mpTree, data = jenks.pD, method = "sankoff", cost = wagnerCostMatrix(6))
+  mpTrees[[sepStart]] <- c(mpTree, mpTreeScore) 
+}
+
+#find unique most parsimonious trees
+mpScores <- sapply(1:length(mpTrees), function(x) mpTrees[[x]][[2]][1])
+mostPars <- which(mpScores == min(mpScores))
+bestTreesRough <- lapply(1:length(mostPars), function(x) mpTrees[[mostPars[x]]][[1]])
+bestTrees <- bestTreesRough[[1]]
+if(length(bestTreesRough) > 1){for(treeGroup in 2:length(bestTreesRough)){bestTrees <- c(bestTrees, bestTreesRough[[treeGroup]])}}
+if(class(bestTrees) != "phylo"){bestTrees <- unique(bestTrees)}
+write.tree(bestTrees, paste0("output/justSpecies/maximumParsimonyTree_empirical_",
+                             ifelse(collapseHomo, "no", ""), "HomoPops_justSpecies_", "PCA", 99, "_jenksCoding.txt"))
