@@ -276,8 +276,8 @@ BMpruneLLuvtChol <- function(rawTraits, sig, tree){ #this function evaluates uni
 #benchmark across lotsa trees#
 ##############################
 numTrees <- 10
-numTips <- 20
-numTraits <- 300
+numTips <- 6
+numTraits <- 100
 
 #get a correctly sized covariance matrix
 if (numTraits < 100){

@@ -106,30 +106,51 @@ prop.part.df <- function(trees, cutoff = 0.01, bs = T){
     props
   }
 }
-compareTrees <- function(biparts1, biparts2, tipLabs){
-  matchProbs <- matrix(0, nrow = sum(length(biparts1[,1]), length(biparts2[,1])), ncol = 2)
+compareTrees <- function(biparts1, biparts2, tipLabs, returnCladeNames = F){
+  matchProbs <- matrix(0, nrow = sum(length(biparts1[,1]), length(biparts2[,1])), ncol = ifelse(returnCladeNames, 3, 2))
   counter <- 1
   biparts2$notSeen <- 1
   for(clade in 1:length(biparts1[,2])){
     cladeName <- biparts1[,2][[clade]]
     isThere <- sapply(1:length(biparts2[,1]), function(x) identical(cladeName, biparts2[x,2][[1]]))
     altCladeName <- sort(setdiff(tipLabs, cladeName))
+    shortCladeName <- paste0(sort(shorter(cladeName, altCladeName)), collapse = ", ")
     orIsThere <- sapply(1:length(biparts2[,1]), function(x) identical(altCladeName, biparts2[x,2][[1]]))
     if(any(isThere)){
       biparts2$notSeen[isThere] <- 0
-      matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][isThere])
+      if(returnCladeNames){
+        matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][isThere], shortCladeName)
+      } else {
+        matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][isThere])
+      }
     } else if (any(orIsThere)) {
       biparts2$notSeen[orIsThere] <- 0
-      matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][orIsThere])
+      if(returnCladeNames){
+        matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][orIsThere], shortCladeName)
+      } else {
+        matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][orIsThere])
+      }
     } else {
-      matchProbs[counter,] <- c(biparts1[,1][[clade]], 0)
+      if(returnCladeNames){
+        matchProbs[counter,] <- c(biparts1[,1][[clade]], 0, shortCladeName)
+      } else {
+        matchProbs[counter,] <- c(biparts1[,1][[clade]], 0)
+      }
     }
     counter <- counter + 1
   }
   if(sum(biparts2$notSeen) > 0){
-    matchProbs[counter:(counter+sum(biparts2$notSeen)-1),] <- cbind(0, biparts2[biparts2$notSeen == 1,1])
+    if(returnCladeNames){
+      cladeNames <- sapply(1:length(biparts2[biparts2$notSeen == 1,2]), function(bip) 
+        paste0(sort(shorter(biparts2[biparts2$notSeen == 1,2][[bip]], sort(setdiff(tipLabs, biparts2[biparts2$notSeen == 1,2][[bip]])))), collapse = ", "))
+      matchProbs[counter:(counter+sum(biparts2$notSeen)-1),] <- cbind(0, cbind(biparts2[biparts2$notSeen == 1,1], cladeNames)) #needs to be an sapply
+    } else {
+      matchProbs[counter:(counter+sum(biparts2$notSeen)-1),] <- cbind(0, biparts2[biparts2$notSeen == 1,1])
+    }
   }
-  matchProbs <- matchProbs[rowSums(matchProbs == c(0,0)) != 2,]
+  if(returnCladeNames){
+    matchProbs <- matchProbs[rowSums(matchProbs == c(0,0)) != ifelse(returnCladeNames,3,2),]
+  }
   matchProbs
 }
 clade_prob <- function(tipNames, trees, allTipNames = NA, partfreqs = NA){

@@ -250,6 +250,8 @@ abline(0,1)
 
 
 
+
+
 #making the actual figure
 png(filename = "~/Documents/Harvati_Reanalysis_Manuscript/figures/figure4_final.png", width = 2200, height = 750)
 layout(matrix(c(1,1,2), nrow = 1, ncol = 3, byrow = TRUE))
@@ -263,6 +265,16 @@ title("     Males                           Females", cex.main = 4.5, line = 0)
 box(which = "figure", lty = 5)
 text(labels = "a)", cex = textsiz, x = 0.53, y = 1.065, xpd = T, font = 4, col = "darkred")
 
+branchRates_m_mean_rescaled_noSap <- round(branchRates_m_mean_rescaled, 0)
+branchRates_m_mean_rescaled_onlySap <- round(branchRates_m_mean_rescaled, 0)
+branchRates_m_mean_rescaled_onlySap[-7] <- NA
+branchRates_m_mean_rescaled_noSap[7] <- NA
+edgelabels.cophylo(branchRates_m_mean_rescaled_noSap, cex=1.5, font = 2,
+                   frame="none", adj=c(0.5,-0.5), which= "left")
+edgelabels.cophylo(branchRates_m_mean_rescaled_onlySap, cex=1.5, font = 2,
+                   frame="none", adj=c(-0.5,-0.5), which= "left")
+edgelabels.cophylo(round(branchRates_f_mean_rescaled, 0), cex=1.5, font = 2,
+                   frame="none", adj=c(0.5,-0.5), which= "right")
 
 xl <- -0.3; yb <- -0.125; xr <- 0.3; yt <- -0.075;
 rect(
@@ -290,6 +302,11 @@ box(which = "figure", lty = 5)
 text(labels = "b)", cex = textsiz, x = 15.5, y = 17, xpd = T, font = 4, col = "darkred")
 
 dev.off()
+
+
+
+
+
 
 #making figure 5, comparing the inferred mvBM rate matrix with the P matrix
 traitRates_m_mean <- apply(traitRates_m, 1, mean)
@@ -356,16 +373,16 @@ par(mar=c(6,6.5,6,1))
 par(lwd = 2)
 hist(traitRates_m_rescaled_perc, breaks = 5, xlab = "", ylab = "", main = "", cex.axis = 2.5, lwd = 3, ylim = c(0,20), col = "grey75")
 text(labels = "b)", cex = textsiz, x = 1.015, y = 26.5, xpd = T, font = 4, col = "darkred")
-title(xlab = "percentile", cex.lab = 3, line = 3.75)
+title(xlab = "quantile", cex.lab = 3, line = 3.75)
 title(ylab = "frequency", cex.lab = 3, line = 3.5)
-title(main = "Male Rate Percentiles", cex.main = 4)
+title(main = "Male Rate Quantiles", cex.main = 4)
 par(lwd = 1)
 box(which = "figure", lty = 5)
 par(lwd = 2)
 hist(traitRates_f_rescaled_perc, breaks = 5, xlab = "", ylab = "", main = "", cex.axis = 2.5, lwd = 3, ylim = c(0,20), col = "grey75")
-title(xlab = "percentile", cex.lab = 3, line = 3.75)
+title(xlab = "quantile", cex.lab = 3, line = 3.75)
 title(ylab = "frequency", cex.lab = 3, line = 3.5)
-title(main = "Female Rate Percentiles", cex.main = 4)
+title(main = "Female Rate Quantiles", cex.main = 4)
 par(lwd = 1)
 box(which = "figure", lty = 5)
 
@@ -400,16 +417,16 @@ par(mar=c(6,6.5,6,1))
 par(lwd = 2)
 hist(corrMatrices_m_perc, breaks = 5, xlab = "", ylab = "", main = "", cex.axis = 2.5, lwd = 3, ylim = c(0,400), col = "grey75")
 text(labels = "d)", cex = textsiz, x = 1.015, y = 525, xpd = T, font = 4, col = "darkred")
-title(xlab = "percentile", cex.lab = 3, line = 3.75)
+title(xlab = "quantile", cex.lab = 3, line = 3.75)
 title(ylab = "frequency", cex.lab = 3, line = 3.5)
-title(main = "Male Correlation\nPercentiles", cex.main = 4, line = -2.25)
+title(main = "Male Correlation\nQuantiles", cex.main = 4, line = -2.25)
 par(lwd = 1)
 box(which = "figure", lty = 5)
 par(lwd = 2)
 hist(corrMatrices_f_perc, breaks = 5, xlab = "", ylab = "", main = "", cex.axis = 2.5, lwd = 3, ylim = c(0,400), col = "grey75")
-title(xlab = "percentile", cex.lab = 3, line = 3.75)
+title(xlab = "quantile", cex.lab = 3, line = 3.75)
 title(ylab = "frequency", cex.lab = 3, line = 3.5)
-title(main = "Female Correlation\nPercentiles", cex.main = 4, line = -2.25)
+title(main = "Female Correlation\nQuantiles", cex.main = 4, line = -2.25)
 par(lwd = 1)
 box(which = "figure", lty = 5)
 

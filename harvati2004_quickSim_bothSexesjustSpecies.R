@@ -106,30 +106,58 @@ prop.part.df <- function(trees, cutoff = 0.01, bs = T){
     props
   }
 }
-compareTrees <- function(biparts1, biparts2, tipLabs){
-  matchProbs <- matrix(0, nrow = sum(length(biparts1[,1]), length(biparts2[,1])), ncol = 2)
+shorter <- function(x1, x2){
+  if(length(x1) > length(x2)){
+    return(x2)
+  } else{
+    return(x1)
+  }
+}
+compareTrees <- function(biparts1, biparts2, tipLabs, returnCladeNames = F){
+  matchProbs <- matrix(0, nrow = sum(length(biparts1[,1]), length(biparts2[,1])), ncol = ifelse(returnCladeNames, 3, 2))
   counter <- 1
   biparts2$notSeen <- 1
   for(clade in 1:length(biparts1[,2])){
     cladeName <- biparts1[,2][[clade]]
     isThere <- sapply(1:length(biparts2[,1]), function(x) identical(cladeName, biparts2[x,2][[1]]))
     altCladeName <- sort(setdiff(tipLabs, cladeName))
+    shortCladeName <- paste0(sort(shorter(cladeName, altCladeName)), collapse = ", ")
     orIsThere <- sapply(1:length(biparts2[,1]), function(x) identical(altCladeName, biparts2[x,2][[1]]))
     if(any(isThere)){
       biparts2$notSeen[isThere] <- 0
-      matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][isThere])
+      if(returnCladeNames){
+        matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][isThere], shortCladeName)
+      } else {
+        matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][isThere])
+      }
     } else if (any(orIsThere)) {
       biparts2$notSeen[orIsThere] <- 0
-      matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][orIsThere])
+      if(returnCladeNames){
+        matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][orIsThere], shortCladeName)
+      } else {
+        matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][orIsThere])
+      }
     } else {
-      matchProbs[counter,] <- c(biparts1[,1][[clade]], 0)
+      if(returnCladeNames){
+        matchProbs[counter,] <- c(biparts1[,1][[clade]], 0, shortCladeName)
+      } else {
+        matchProbs[counter,] <- c(biparts1[,1][[clade]], 0)
+      }
     }
     counter <- counter + 1
   }
   if(sum(biparts2$notSeen) > 0){
-    matchProbs[counter:(counter+sum(biparts2$notSeen)-1),] <- cbind(0, biparts2[biparts2$notSeen == 1,1])
+    if(returnCladeNames){
+      cladeNames <- sapply(1:length(biparts2[biparts2$notSeen == 1,2]), function(bip) 
+        paste0(sort(shorter(biparts2[biparts2$notSeen == 1,2][[bip]], sort(setdiff(tipLabs, biparts2[biparts2$notSeen == 1,2][[bip]])))), collapse = ", "))
+      matchProbs[counter:(counter+sum(biparts2$notSeen)-1),] <- cbind(0, cbind(biparts2[biparts2$notSeen == 1,1], cladeNames)) #needs to be an sapply
+    } else {
+      matchProbs[counter:(counter+sum(biparts2$notSeen)-1),] <- cbind(0, biparts2[biparts2$notSeen == 1,1])
+    }
   }
-  matchProbs <- matchProbs[rowSums(matchProbs == c(0,0)) != 2,]
+  if(returnCladeNames){
+    matchProbs <- matchProbs[rowSums(matchProbs == c(0,0)) != ifelse(returnCladeNames,3,2),]
+  }
   matchProbs
 }
 clade_prob <- function(tipNames, trees, allTipNames = NA, partfreqs = NA){
@@ -181,6 +209,16 @@ for(i in 1:100){
   postDists[i,] <- sapply(1:length(trees), function(tree) round(RF.dist(trees[tree], mol_tree, normalize = T), 2))
 }
 
+compTrees_cladeNames <- lapply(1:100, function(na) NA)
+for(i in 1:100){
+  cat(paste0(i, " "))
+  trees1 <- read.tree(paste0("/Volumes/1TB/Harvati/output/", filename, i, "_c1.trees"))
+  trees2 <- read.tree(paste0("/Volumes/1TB/Harvati/output/", filename, i, "_c2.trees"))
+  # print(RF.dist(maxCladeCred(trees1), maxCladeCred(trees2)))
+  trees <- c(trees1, trees2)
+  compTrees_cladeNames[[i]] <- compareTrees(prop.part.df(trees), prop.part.df(mol_tree), tiplabs, returnCladeNames = T)
+}
+
 sum(dists >= 0.5) / 100
 dists_table <- table(dists)
 
@@ -189,7 +227,7 @@ dists_table <- table(dists)
 mvBM_trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/justSpecies/harvati_PCA_bothSexes_noHomopops_justSpecies_inf_mvBM_PCA99_c1.trees")
 mvBM_trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/justSpecies/harvati_PCA_bothSexes_noHomopops_justSpecies_inf_mvBM_PCA99_c2.trees")
 mvBM_trees <- c(mvBM_trees1, mvBM_trees2)
-comparison_mvBM <- compareTrees(prop.part.df(mvBM_trees), prop.part.df(mol_tree), tiplabs)
+comparison_mvBM <- compareTrees(prop.part.df(mvBM_trees, cutoff = 0.0001), prop.part.df(mol_tree), tiplabs, T)
 mvBM_RFdists <- sapply(1:length(mvBM_trees), function(tree) round(RF.dist(mvBM_trees[tree], mol_tree_mcc_spOnly, normalize = T), 2))
 mvBM_table <- table(mvBM_RFdists) / length(mvBM_trees) * 100
 compTrees_comb <- do.call(rbind, compTrees)
@@ -323,12 +361,46 @@ box(lwd=3.25)
 box(which = "figure", lty = 5)
 text(labels = "c)", cex = textsiz, x = 1.0365, y = 67.75, xpd = T, font = 4, col = "darkred")
 
-
-
 dev.off()
 
+#find poorly estimated clades
 
+mvBM_mismatched_clades <- sapply(1:nrow(comparison_mvBM), function(clade) abs(diff(as.numeric(comparison_mvBM[clade,1:2]))))
+mvBM_mismatched_clades <- comparison_mvBM[mvBM_mismatched_clades > 0.75,]
+fixDZ <- function(thing){
+  if(length(thing) == 0){return(c(0,0))}else{return(thing)}
+}
+mvBM_mismatched_clades <- mvBM_mismatched_clades[c(1,2,3,5,6,4),]
+mvBM_mismatched_clades_simProbs <- lapply(1:nrow(mvBM_mismatched_clades), function(clade) 
+  t(sapply(1:100, function(sim) fixDZ(as.numeric(compTrees_cladeNames[[sim]][compTrees_cladeNames[[sim]][,3] == mvBM_mismatched_clades[clade,3], 1:2]))))
+)
 
+png(filename = "~/Documents/Harvati_Reanalysis_Manuscript/figures/figure6_final.png", width = 2400, height = 800)
+par(mfrow = c(2, 3))
+par(mar=c(9,9.5,5,1))
 
-
-
+for(i in 1:length(mvBM_mismatched_clades_simProbs)){
+  par(lwd = 2)
+  hist(mvBM_mismatched_clades_simProbs[[i]][,1], breaks = 10, xlab = "", ylab = "", main = "", xaxt = "n", yaxt = "n", lwd = 3, ylim = c(0,100), col = "grey75", xlim = c(0,1))
+  axis(1, at = 0:5/5, labels = rep("", 6), lwd = 4, cex.axis = 3, tck = -0.035)
+  mtext(text = 0:5/5, side = 1, at = 0:5/5, cex = 2.5, line = 3.25)
+  axis(2, at = 0:5*20, labels =  rep("", 6), lwd = 4, cex.axis = 3, tck = -0.035)
+  mtext(text = 0:4*20, side = 2, at = 0:4*20, cex = 2.5, line = 2, srt = 90)  
+  abline(v = mvBM_mismatched_clades[i,1], col = "darkred", lty = 2, lwd = 4)
+  text(x = as.numeric(mvBM_mismatched_clades[i,1]) - 0.02, y = ifelse(i==5, 75, 25), labels = sum(as.numeric(mvBM_mismatched_clades[i,1]) > mvBM_mismatched_clades_simProbs[[i]][,1]), srt = 90, cex = 3, col = "darkred")
+  text(x = as.numeric(mvBM_mismatched_clades[i,1]) + 0.02, y = ifelse(i==5, 75, 25), labels = sum(as.numeric(mvBM_mismatched_clades[i,1]) < mvBM_mismatched_clades_simProbs[[i]][,1]), srt = 270, cex = 3, col = "darkred")
+  # text(labels = "a)", cex = textsiz, x = 1.015, y = 525, xpd = T, font = 4, col = "darkred")
+  title(xlab = "probability", cex.lab = 4, line = 6.75)
+  title(ylab = "frequency", cex.lab = 4, line = 6)
+  plot_title <- ifelse(i < 4, expression(paste("Bipartition ", underline(Absent), " in True Tree")), expression(paste("Bipartition ", underline(Present), " in True Tree")))
+  taxa <- strsplit(mvBM_mismatched_clades[i,3], split = ", ")[[1]]
+  taxa <- sapply(1:length(taxa), function(taxon) paste0(strsplit(taxa[taxon], "_")[[1]], collapse = " "))
+  legend(x = "topright", legend = taxa, box.col = "white", cex = 3, text.font = 3)
+  title(main = plot_title, cex.main = 4, line = 0)
+  par(lwd = 1)
+  box(which = "figure", lty = 5)
+  if(i < 4){
+    text(labels = paste0(c("a", "b", "c")[i], ")"), cex = textsiz, x = 1.025, y = 113, xpd = T, font = 4, col = "darkred")
+  }
+}
+dev.off()
