@@ -11,6 +11,13 @@ PCA_covBG <- F
 collapseHomo <- T
 collapseSubsp <- F
 
+shorter <- function(x1, x2){
+  if(length(x1) > length(x2)){
+    return(x2)
+  } else{
+    return(x1)
+  }
+}
 startsWith2 <- function(x, pre){apply(sapply(1:length(pre), function(n) startsWith(x, pre[n])), 1, any)}
 greedyCT <- function(trees){
   tipNames <- trees[[1]]$tip.label

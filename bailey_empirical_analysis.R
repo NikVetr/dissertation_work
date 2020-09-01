@@ -17,10 +17,10 @@ library(gtools)
 
 #specify analysis parameters
 nrounds <- 16
-noSmartStart = T
+noSmartStart = F
 useStarPhylogeny <- T
 jointThreshAndMeans <- F; jTM_startAtRound <- 6
-combineAsian <- T
+combineAsian <- F
 useUPGMAforNRounds <- 0
 weighPCV <- F
 MCAR <- F #missing data is coded with state '9'
@@ -1818,7 +1818,7 @@ for(i in 1:nrounds){
             
             conditionals_less_observed <-  lapply(1:length(obs), function(tip) t(sapply(1:ncol(current_params$means), function(trait)
               apply(approxMultinomialCond(probs = conditional_probs_per_tip[[tip]][trait,], obs_counts = n_obs_trait_state_per_tip[[tip]][trait,], 
-                                          total_count = nrow(obs[[tip]]), min_sample_size = 500, raw = T, mcmc_rescue = 5), 2, mean)
+                                          total_count = nrow(obs[[tip]]), min_sample_size = 500, raw = T, mcmc_rescue = 20), 2, mean)
             )))
             
           } else if(use_conditional_expectation){
@@ -1919,5 +1919,5 @@ lines(apply(trait_specific_missing_probs, 2, meanNARM), lwd = 2, col = 2)
 curr_est_index <- max(sapply(1:length(list.files(paste0("data", ifelse(jointThreshAndMeans, "_joint_thresh_means" , "") ,""))), 
                              function(prms) as.numeric(strsplit(list.files("data")[prms], split = "_")[[1]][length(strsplit(list.files("data")[prms], split = "_")[[1]])]))) + 1
 if(!exists("curr_est_index")){curr_est_index <- 1}
-save(current_params, file = paste0("data", ifelse(jointThreshAndMeans, "_joint_thresh_means" , "") ,"/est_params_", 
+save(current_params, file = paste0("data", ifelse(jointThreshAndMeans, "_joint_thresh_means" , "") ,"/est_params_", ifelse(combineAsian, "", "noPanAsian_"),
                                    ifelse(useUPGMA,"UPGMA_","NJ_"), ifelse(useStarPhylogeny,"Star_",""), curr_est_index))

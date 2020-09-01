@@ -87,7 +87,25 @@ for(i in 0:55){
   plot(njTree, main = paste0(PC_thresh * 100, "% of the variance represented"))
 }
 
-nearPD_Cor <- as.matrix(Matrix::nearPD(mean_of_cors, corr = F)$mat)
+#test out eigenvalue correction?
+es <- eigen(mean_of_cors)
+es$vectors %*% diag(es$values) %*% t(es$vectors) - mean_of_cors
+o_ev <- 84
+n_es <- es
+n_es$values[n_es$values < 0] <- n_es$values[max(which(n_es$values > 0))]
+det(n_es$vectors %*% diag(n_es$values) %*% t(n_es$vectors))
+n_es$vectors %*% diag(n_es$values) %*% t(n_es$vectors) - mean_of_cors
+
+det(mean_of_cors)
+det(es$vectors[,1:n_ev] %*% diag(es$values[1:n_ev]) %*% t(es$vectors[,1:n_ev]))
+es$vectors[,1:n_ev] %*% diag(es$values[1:n_ev]) %*% t(es$vectors[,1:n_ev]) - mean_of_cors
+
+
+nearPD_Cor <- as.matrix(Matrix::nearPD(mean_of_cors, corr = T)$mat)
+det(nearPD_Cor)
+write.table(nearPD_Cor, file = "output/nearPD_Corr.txt")
+write.table(mean_of_means, file = "output/mean_of_means.txt")
+
 mahDistMat <- mahaMatrix(mean_of_means, as.matrix(Matrix::nearPD(mean_of_cors, corr = T)$mat), squared = F)
 njTree <- ape::nj(mahDistMat)
 njTree <- phytools::reroot(tree = njTree, node.number = which(njTree$tip.label == "NEAND"), position = njTree$edge.length[which(njTree$edge[,2] == which(njTree$tip.label == "NEAND"))] / 2)
