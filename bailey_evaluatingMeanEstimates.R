@@ -1,9 +1,12 @@
 setwd("/Volumes/1TB/Bailey/")
 
-data_dir <- "data_joint_thresh_means/"
+# data_dir <- "data_joint_thresh_means/"
 data_dir <- "data/"
 data_files <- list.files(data_dir)
-data_files <- data_files[grep(data_files, pattern =  "Star")]
+data_files <- data_files[grep(data_files, pattern =  "combineSWasian_")]
+data_files <- data_files[grep(data_files, pattern =  "noPanAsian_NJ")]
+data_files <- data_files[grep(data_files, pattern =  "params_NJ_Star")]
+
 data <- lapply(1:length(data_files), function(x) "placeholder")
 for(i in 1:length(data)){
   load(paste0(data_dir, data_files[i]))
@@ -11,7 +14,7 @@ for(i in 1:length(data)){
 }
 
 data <- data[grep(data_files, pattern = "NJ")]
-data <- data[sapply(1:length(data), function(x) nrow(data[[x]]$means)) == 6]
+# data <- data[sapply(1:length(data), function(x) nrow(data[[x]]$means)) == 6]
 
 mean_of_means <- data[[1]]$means
 for(i in 2:length(data)){
@@ -43,6 +46,14 @@ pairs(cors, col = rgb(0,0,0,0.3), main = "correlations", lower.panel = panel.cor
 
 threshes <- sapply(1:length(data), function(run) as.vector(data[[run]]$threshold_mat)[as.vector(data[[run]]$threshold_mat != Inf)])
 pairs(threshes, col = rgb(0,0,0,0.3), main = "thresholds", lower.panel = panel.cor, upper.panel = one.to.one.line)
+
+mean_of_thresholds <- data[[1]]$threshold_mat
+for(i in 2:length(data)){
+  mean_of_thresholds <- mean_of_thresholds + data[[i]]$threshold_mat
+}
+mean_of_thresholds <- mean_of_thresholds / length(data)
+write.table(mean_of_thresholds, file = "output/mean_of_thresholds_collapseAsia.txt")
+
 
 mean_of_cors <- data[[1]]$cor
 for(i in 2:length(data)){
@@ -103,8 +114,8 @@ es$vectors[,1:n_ev] %*% diag(es$values[1:n_ev]) %*% t(es$vectors[,1:n_ev]) - mea
 
 nearPD_Cor <- as.matrix(Matrix::nearPD(mean_of_cors, corr = T)$mat)
 det(nearPD_Cor)
-write.table(nearPD_Cor, file = "output/nearPD_Corr.txt")
-write.table(mean_of_means, file = "output/mean_of_means.txt")
+write.table(nearPD_Cor, file = "output/nearPD_Corr_SWAsian.txt")
+write.table(mean_of_means, file = "output/mean_of_means_SWAsian.txt")
 
 mahDistMat <- mahaMatrix(mean_of_means, as.matrix(Matrix::nearPD(mean_of_cors, corr = T)$mat), squared = F)
 njTree <- ape::nj(mahDistMat)

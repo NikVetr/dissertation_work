@@ -1,5 +1,9 @@
 setwd("/Volumes/1TB/Bailey/")
 
+noPanAsian <- F
+SWAsian <- F
+runAnalysis <- F
+
 library(MCMCpack)
 library(microbenchmark)
 library(phytools)
@@ -7,6 +11,43 @@ library(phangorn)
 library(mvMORPH)
 library(tictoc)
 library(mvtnorm)
+
+MAP_tree <- function(trees, return_posteriorMean_BLs = T, n_trees_to_return = 1){
+  all_the_trees <- trees
+  unique_topologies <- trees[[1]]
+  same_trees <- sapply(1:length(trees), function(tree) RF.dist(trees[[tree]], trees[[1]])) == 0
+  if(n_trees_to_return == "all" & return_posteriorMean_BLs){
+    unique_topologies <- maxCladeCred(trees[same_trees])
+  } else {
+    unique_topologies <- trees[[1]]
+  }
+  n_per_unique_topology <- sum(same_trees)
+  trees <- trees[!same_trees]
+  # while(max(n_per_unique_topology) < length(trees)){
+  while(length(trees) > 0){
+    same_trees <- sapply(1:length(trees), function(tree) RF.dist(trees[[tree]], trees[[1]])) == 0
+    if(n_trees_to_return == "all" & return_posteriorMean_BLs){
+      unique_topologies <- c(unique_topologies, maxCladeCred(trees[same_trees]))
+    } else {
+      unique_topologies <- c(unique_topologies, trees[[1]])
+    }
+    n_per_unique_topology <- c(n_per_unique_topology, sum(same_trees))
+    trees <- trees[!same_trees]
+  }
+  map_tree = unique_topologies[[which.max(n_per_unique_topology)]]
+  if(return_posteriorMean_BLs & n_trees_to_return != "all"){
+    map_tree = maxCladeCred(all_the_trees[sapply(1:length(all_the_trees), function(tree) RF.dist(all_the_trees[[tree]], map_tree) == 0)])
+  }
+  if(n_trees_to_return == 1){
+    return(list(map_tree = map_tree, prob = max(n_per_unique_topology) / sum(c(n_per_unique_topology, length(trees)))))
+  }
+  if(return_posteriorMean_BLs & n_trees_to_return == "all"){
+    unique_topologies <- unique_topologies[order(n_per_unique_topology, decreasing = T)]
+    n_per_unique_topology <- sort(n_per_unique_topology, decreasing = T)
+    return(lapply(1:length(n_per_unique_topology), function(tree) list(tree = unique_topologies[tree], 
+                                                                prob = n_per_unique_topology[tree] / length(all_the_trees))))
+  }
+}
 
 meansNexus <- function (characterMatrix, outputFilePath, traitsOnColumns = T){
   if (traitsOnColumns) {ntax = dim(characterMatrix)[1]; nchar = dim(characterMatrix)[2]}
@@ -423,14 +464,21 @@ BMpruneLLmvt <- function(traits, sig, tree){ #this function evaluates multivaria
 
 #simulate data
 
-means <- as.matrix(read.table("output/mean_of_means.txt"))
+extraFilename <- ""
+if(noPanAsian){extraFilename <- "_noPanAsian"}
+if(SWAsian){extraFilename <- "_SWAsian"}
+
+means <- as.matrix(read.table(paste0("output/mean_of_means", extraFilename, ".txt")))
 nTaxa <- nrow(means)
 n_traits <- ncol(means)
 
-R <- as.matrix(read.table("output/nearPD_Corr.txt"))
+R <- as.matrix(read.table(paste0("output/nearPD_Corr", extraFilename, ".txt")))
 weight <- 0.02
 R <- (R + weight*diag(n_traits)) / (1 + weight)
-max(abs(as.matrix(read.table("output/nearPD_Corr.txt")) - R))
+max(abs(as.matrix(read.table(paste0("output/nearPD_Corr", extraFilename, ".txt"))) - R))
+det(R)
+
+if(runAnalysis){
 
 #specify priors
 
@@ -653,10 +701,10 @@ rates <- rates[(burnin_prop*n_out):n_out,]
 lls <- lls[(burnin_prop*n_out):n_out]
 
 output_files <- list.files("output") 
-curr_index <- length(output_files[grep(output_files, pattern = "fixCorrs_infRates_allTraits_trees")])
-write.tree(phy = trees, file = paste0("output/fixCorrs_infRates_allTraits_trees_", curr_index, ".trees"))
-write.table(rates, file = paste0("output/fixCorrs_infRates_allTraits_rates_", curr_index, ".txt"))
-write.table(lls, file = paste0("output/fixCorrs_infRates_allTraits_lls_", curr_index, ".txt"))
+curr_index <- length(output_files[grep(output_files, pattern = paste0("fixCorrs_infRates_allTraits_trees", extraFilename))])
+write.tree(phy = trees, file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", curr_index, ".trees"))
+write.table(rates, file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", curr_index, ".txt"))
+write.table(lls, file = paste0("output/fixCorrs_infRates_allTraits_lls", extraFilename, "_", curr_index, ".txt"))
 
 n_accept / n_prop 
 
@@ -670,20 +718,22 @@ effectiveSize(lls)
 effectiveSize(sapply(1:length(trees), function(x) sum(trees[[x]]$edge.length)))
 effectiveSize(sapply(1:length(trees), function(x) RF.dist(trees[[x]], trees[[1]], normalize = T)))
 
+}
+
 #read in all data for comparison
 
-trees0 <- read.tree(file = "output/fixCorrs_infRates_allTraits_trees_0.trees")
-trees1 <- read.tree(file = "output/fixCorrs_infRates_allTraits_trees_1.trees")
-trees2 <- read.tree(file = "output/fixCorrs_infRates_allTraits_trees_2.trees")
-trees3 <- read.tree(file = "output/fixCorrs_infRates_allTraits_trees_3.trees")
+trees0 <- read.tree(file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", 0, ".trees"))
+trees1 <- read.tree(file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", 1, ".trees"))
+trees2 <- read.tree(file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", 2, ".trees"))
+trees3 <- read.tree(file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", 3, ".trees"))
 
-lls0 <- c(read.table(file = "output/fixCorrs_infRates_allTraits_lls_0.txt"))
-lls1 <- c(read.table(file = "output/fixCorrs_infRates_allTraits_lls_1.txt"))
-lls2 <- c(read.table(file = "output/fixCorrs_infRates_allTraits_lls_2.txt"))
-lls3 <- c(read.table(file = "output/fixCorrs_infRates_allTraits_lls_3.txt"))
+lls0 <- c(read.table(file = paste0("output/fixCorrs_infRates_allTraits_lls", extraFilename, "_", 0, ".txt")))
+lls1 <- c(read.table(file = paste0("output/fixCorrs_infRates_allTraits_lls", extraFilename, "_", 1, ".txt")))
+lls2 <- c(read.table(file = paste0("output/fixCorrs_infRates_allTraits_lls", extraFilename, "_", 2, ".txt")))
+lls3 <- c(read.table(file = paste0("output/fixCorrs_infRates_allTraits_lls", extraFilename, "_", 3, ".txt")))
 
 plot(unlist(c(lls1, lls2, lls3)), type = "l")
-effectiveSize(unlist(c(lls3, lls1, lls2)))
+effectiveSize(unlist(c(lls1, lls2, lls3)))
 
 all_trees <- c(trees1, trees2, trees3)
 effectiveSize(sapply(1:length(all_trees), function(x) sum(all_trees[[x]]$edge.length)))
@@ -700,13 +750,13 @@ tooth_indices_type_index <- sapply(1:length(trait_names), function(x) which(sapp
 trait_indices <- unique(sapply(1:length(trait_names), function(x) strsplit(trait_names[[x]], split = "\\.")[[1]][2]))
 trait_indices_index <- sapply(1:length(trait_names), function(x) which(strsplit(trait_names[[x]], split = "\\.")[[1]][2] == trait_indices))
 
-tooth_type_corrs <- sapply(1:length(unique(tooth_indices_type_index)), function(index) 
+tooth_type_corrs <- sapply(1:length(unique(tooth_indices_type_index)), function(index)
   R[tooth_indices_type_index == index, tooth_indices_type_index == index][upper.tri(R[tooth_indices_type_index == index, tooth_indices_type_index == index])])
-tooth_subtype_corrs <- sapply(1:length(unique(tooth_indices_subtype_index)), function(index) 
+tooth_subtype_corrs <- sapply(1:length(unique(tooth_indices_subtype_index)), function(index)
   R[tooth_indices_subtype_index == index, tooth_indices_subtype_index == index][upper.tri(R[tooth_indices_subtype_index == index, tooth_indices_subtype_index == index])])
-tooth_position_corrs <- sapply(1:length(unique(tooth_indices_position_index)), function(index) 
+tooth_position_corrs <- sapply(1:length(unique(tooth_indices_position_index)), function(index)
   R[tooth_indices_position_index == index, tooth_indices_position_index == index][upper.tri(R[tooth_indices_position_index == index, tooth_indices_position_index == index])])
-trait_corrs <- sapply(1:length(unique(trait_indices_index)), function(index) 
+trait_corrs <- sapply(1:length(unique(trait_indices_index)), function(index)
   R[trait_indices_index == index, trait_indices_index == index][upper.tri(R[trait_indices_index == index, trait_indices_index == index])])
 
 #strength of correlations across teeth & traits
@@ -718,22 +768,22 @@ hist(unlist(tooth_subtype_corrs), add = T, col = rgb(0,0,1,0.4), freq = F, break
 hist(unlist(tooth_type_corrs), add = T, col = rgb(0,1,1,0.4), freq = F, breaks = 20)
 hist(R[upper.tri(R)], add  = T, col = rgb(1,1,1,0.2), freq = F, breaks = 20)
 
-rates0 <- (read.table(file = "output/fixCorrs_infRates_allTraits_rates_0.txt"))
-rates1 <- (read.table(file = "output/fixCorrs_infRates_allTraits_rates_1.txt"))
-rates2 <- (read.table(file = "output/fixCorrs_infRates_allTraits_rates_2.txt"))
-rates3 <- (read.table(file = "output/fixCorrs_infRates_allTraits_rates_3.txt"))
+rates0 <- (read.table(file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", 0, ".txt")))
+rates1 <- (read.table(file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", 1, ".txt")))
+rates2 <- (read.table(file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", 2, ".txt")))
+rates3 <- (read.table(file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", 3, ".txt")))
 
 all_rates <- do.call(rbind, list(rates1, rates2, rates3))
 rate_means <- apply(all_rates, 2, mean)
 effectiveSize(all_rates)
 plot(sort(rate_means), type = "l")
-for(index in 1:length(unique(trait_indices_index))){
-  hist(rate_means[trait_indices_index == index], add = ifelse(index == 1, F, T), xlim = c(0,5), freq = F, ylim = c(0, 10))
-}
 makeTransparent<-function(someColor, alpha=100){
   newColor<-col2rgb(someColor)
   apply(newColor, 2, function(curcoldata){rgb(red=curcoldata[1], green=curcoldata[2],
                                               blue=curcoldata[3],alpha=alpha, maxColorValue=255)})
+}
+for(index in 1:length(unique(trait_indices_index))){
+  hist(rate_means[trait_indices_index == index], add = ifelse(index == 1, F, T), xlim = c(0,5), freq = F, ylim = c(0, 10), col = makeTransparent(index, 100))
 }
 for(index in 1:length(unique(tooth_indices_type_index))){
   hist(rate_means[tooth_indices_type_index == index], add = ifelse(index == 1, F, T), xlim = c(0,5), freq = F, ylim = c(0, 3), col = makeTransparent(index, 100))
@@ -770,6 +820,9 @@ bip_probs3$cladeNames <- sapply(1:length(bip_probs3$cladeNames), function(clade)
 
 
 tipLabs <- c("NEAND",  "AUSNG", "ASIAN",  "AMER",   "SSAF",   "EUR")
+# tipLabs <- c("NEAND",  "AUSNG", "WAS", "NEAS",  "AMER",   "SSAF",   "EUR", "SAS")
+# tipLabs <- c("NEAND",  "AUSNG", "SWAS", "NEAS",  "AMER",   "SSAF",   "EUR")
+plot(compareTrees(bip_probs0, bip_probs1, tipLabs = tipLabs))
 plot(compareTrees(bip_probs1, bip_probs2, tipLabs = tipLabs))
 plot(compareTrees(bip_probs1, bip_probs3, tipLabs = tipLabs))
 plot(compareTrees(bip_probs2, bip_probs3, tipLabs = tipLabs))
@@ -781,22 +834,16 @@ gctree <- greedyCT(all_trees)
 plot(unroot(gctree))
 matching_trees <- which(sapply(1:length(all_trees), function(tree) RF.dist(all_trees[[tree]], gctree)) == 0)
 plot(midpoint(maxCladeCred(all_trees[matching_trees])))
-
-MAP_tree <- function(trees, return_posteriorMean_BLs = T){
-  all_the_trees <- trees
-  unique_topologies <- trees[[1]]
-  same_trees <- sapply(1:length(trees), function(tree) RF.dist(trees[[tree]], trees[[1]])) == 0
-  n_per_unique_topology <- sum(same_trees)
-  trees <- trees[!same_trees]
-  while(max(n_per_unique_topology) < length(trees)){
-    unique_topologies <- c(unique_topologies, trees[[1]])
-    same_trees <- sapply(1:length(trees), function(tree) RF.dist(trees[[tree]], trees[[1]])) == 0
-    n_per_unique_topology <- c(n_per_unique_topology, sum(same_trees))
-    trees <- trees[!same_trees]
-  }
-  map_tree = unique_topologies[[which.max(n_per_unique_topology)]]
-  if(return_posteriorMean_BLs){
-    map_tree = maxCladeCred(all_the_trees[sapply(1:length(all_the_trees), function(tree) RF.dist(all_the_trees[[tree]], map_tree) == 0)])
-  }
-  return(list(map_tree = map_tree, prob = max(n_per_unique_topology) / sum(c(n_per_unique_topology, length(trees)))))
+nodelabels(round(internal_nodes_probs(midpoint(maxCladeCred(all_trees)), unroot(all_trees)) * 100, 0), frame = "circle", bg = "white", cex = 1.25)
+mapTree <- MAP_tree(all_trees[seq(1, 1E4, 5)], n_trees_to_return = 1)
+plot(midpoint(mapTree$map_tree))
+mapTrees <- MAP_tree(trees = all_trees[seq(1, 1E4, 5)], return_posteriorMean_BLs = T, n_trees_to_return = "all")
+cumulative_credibleSet_probs <- cumsum(sapply(1:length(mapTrees), function(x) mapTrees[[x]]$prob))
+plot(credibleSet_probs, type = "l", ylab = "size of credible set", xlab = "number of trees", xlim = c(1, length(mapTrees)))
+layout(matrix(c(1,2,3,4), 2, 2, byrow = T))
+par(mar = c(2,2,2,2))
+for(i in 1:4){
+  plot.phylo(x = midpoint(mapTrees[[i]]$tree[[1]]), main = paste0("probability = ", round(mapTrees[[i]]$prob, 2)))
 }
+
+

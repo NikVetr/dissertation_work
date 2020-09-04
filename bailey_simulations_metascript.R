@@ -1,3 +1,6 @@
+replicate_index <- 1
+set.seed(replicate_index)
+
 setwd("/Volumes/1TB/Bailey/")
 library(pbivnorm)
 library(Matrix)
@@ -14,37 +17,13 @@ library(mvMORPH)
 library(questionr)
 library(tictoc)
 library(gtools)
-
-#specify analysis parameters
-nrounds <- 16
-noSmartStart = F
-useStarPhylogeny <- T
-doEDA <- F
-jointThreshAndMeans <- F; jTM_startAtRound <- 6
-combineAsian <- T
-combineSW_ASIAN <- F
-useUPGMAforNRounds <- 0
-weighPCV <- F
-MCAR <- F #missing data is coded with state '9'
-ignoreImputedData <- F
-nrounds_to_not_impute <- 4
-stochastic_imputation <- T
-MNAR_Imputation <- T
-updateAllAtOnce <- T #impute each missing value as you iterate through them, or all at once at the end?
-ignoreOtherImputedStates <- T
-use_conditional_probs_for_observed_data <- F
-use_conditional_probs_for_unobserved_data <- T
-impose_constraints <- T #should we impose constraints on the missing data at all?
-constraint_probs <-  NA
-use_imputed_data_for_corrs <- F
-useUPGMA <- F
-use_univariate_normals_for_conditionals <- T
-use_observed_numerator_ALL_conditionals_denominator <- T
-use_conditional_multinomial_approx <- T
-add_individuals_to_missing <- F
-adjust_conds_at_pop_level <- F
-use_conditional_expectation <- F
-useNearPDforTree <- F
+library(MCMCpack)
+library(microbenchmark)
+library(phytools)
+library(phangorn)
+library(mvMORPH)
+library(tictoc)
+library(mvtnorm)
 
 logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may help with speedup
   lognormal_prior_on_beta_shape_params_for_corrs <- c(0,1) #let's not infer the shape of the beta distribution,
@@ -381,9 +360,9 @@ logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may h
       }
     } else if(par_type == "thresh-means"){
       if(abs(sum(par_to_opt[-(1:nTaxa)]) - sum(diff(threshold_mat[thresh_trait,][threshold_mat[thresh_trait,] != Inf]))) > 1E-6){
-          sum_of_spacings <- sum(diff(threshold_mat[thresh_trait,][threshold_mat[thresh_trait,] != Inf]))
-          regTerm <- -sum(dexp(diff(threshold_mat[thresh_trait,][threshold_mat[thresh_trait,] != Inf]), lambda, TRUE))
-        } else {
+        sum_of_spacings <- sum(diff(threshold_mat[thresh_trait,][threshold_mat[thresh_trait,] != Inf]))
+        regTerm <- -sum(dexp(diff(threshold_mat[thresh_trait,][threshold_mat[thresh_trait,] != Inf]), lambda, TRUE))
+      } else {
         sum_of_spacings <- sum(par_to_opt[-(1:nTaxa)])
         regTerm <- -sum(dexp(par_to_opt[-(1:nTaxa)], lambda, TRUE))
         
@@ -1083,862 +1062,628 @@ approxMultinomialCondMCMC <- function(probs, obs_counts, total_count, min_ess = 
     }
   }
 }
-
-
-
-
-filter_out_0obs_indivs <- T
-d <- read.csv("bailey_data.csv", header = T, stringsAsFactors = F)
-d_orig <-  d
-d <- t(sapply(1:nrow(d), function(row_of_d) trimws(d[row_of_d,])))
-colnames(d) <- colnames(d_orig)
-d[d[,1] == "NEAS",2]
-
-#combine Asian populations?
-pop_names <- d[,1]
-table(pop_names)
-if(combineAsian){
-  asian_indices <- as.logical(sapply(1:length(pop_names), function(name) length(intersect(c("SAS", "WAS", "NEAS"), pop_names[name]))))
-  pop_names[asian_indices] <- "ASIAN"
-  d[,1] <- pop_names
-}
-if(combineSW_ASIAN){
-  sw_asian_indices <- as.logical(sapply(1:length(pop_names), function(name) length(intersect(c("SAS", "WAS"), pop_names[name]))))
-  pop_names[sw_asian_indices] <- "SWAS"
-  d[,1] <- pop_names
-}
-table(pop_names)
-
-
-#recode the data
-d[d == ""] <- NA
-d[d == " "] <- NA
-d[d == "-"] <- NA
-d[d == "*"] <- NA
-d[d == "."] <- NA
-d[d == "?"] <- NA
-d[d == "--"] <- NA
-d[d == ".."] <- NA
-d[d == "worn"] <- NA
-d[which(d == "Y", arr.ind = T)] <- "1+"
-d[which(d == "X", arr.ind = T)] <- "1+"
-d[which(d == "x", arr.ind = T)] <- "1+"
-d[d == "retained di1 btwn I1s"] <- NA
-d[which(d == "+", arr.ind = T)] <- "1+"
-d[do.call(rbind, sapply(1:10, function(name) which(d == c("D", "D (asym)", "dis", "dis" , "DM", "m", "M", "MD", "med", "mes")[name], arr.ind = T)))] <- "1+"
-d[which(d == "TRI", arr.ind = T)] <- 6
-d[do.call(rbind, sapply(1:3, function(name) which(d == c("P", "P/R?", "R")[name], arr.ind = T)))] <- "1"
-d[which(d == "A", arr.ind = T)] <- 0
-d[d == "Lmissing"] <- NA
-
-UPM3.BMxP_MR <- d[,"UPM3.BMxP"]
-UPM3.BMxP_MR[which(nchar(UPM3.BMxP_MR) > 1)] <- sapply(1:length(UPM3.BMxP_MR[which(nchar(UPM3.BMxP_MR) > 1)]), function(indiv) substr(UPM3.BMxP_MR[which(nchar(UPM3.BMxP_MR) > 1)][indiv], 1, 1))
-UPM3.BMxP_DR <- d[,"UPM3.BMxP"]
-UPM3.BMxP_DR[which(nchar(UPM3.BMxP_DR) > 1)] <- sapply(1:length(UPM3.BMxP_DR[which(nchar(UPM3.BMxP_DR) > 1)]), function(indiv) substr(UPM3.BMxP_DR[which(nchar(UPM3.BMxP_DR) > 1)][indiv], 3, 3))
-UPM3.BMxP_DR[which(UPM3.BMxP_DR == ",")] <- NA
-
-UPM3.LMxP_MR <- d[,"UPM3.LMxP"]
-UPM3.LMxP_MR[which(nchar(UPM3.LMxP_MR) > 1)] <- sapply(1:length(UPM3.LMxP_MR[which(nchar(UPM3.LMxP_MR) > 1)]), function(indiv) substr(UPM3.LMxP_MR[which(nchar(UPM3.LMxP_MR) > 1)][indiv], 1, 1))
-UPM3.LMxP_DR <- d[,"UPM3.LMxP"]
-UPM3.LMxP_DR[which(nchar(UPM3.LMxP_DR) > 1)] <- sapply(1:length(UPM3.LMxP_DR[which(nchar(UPM3.LMxP_DR) > 1)]), function(indiv) substr(UPM3.LMxP_DR[which(nchar(UPM3.LMxP_DR) > 1)][indiv], 3, 3))
-
-d <- cbind(d, UPM3.BMxP_MR = UPM3.BMxP_MR)
-d <- cbind(d, UPM3.BMxP_DR = UPM3.BMxP_DR)
-d <- cbind(d, UPM3.LMxP_MR = UPM3.LMxP_MR)
-d <- cbind(d, UPM3.LMxP_DR = UPM3.LMxP_DR)
-d <- d[,-which(colnames(d) == "UPM3.LMxP")]
-d <- d[,-which(colnames(d) == "UPM3.BMxP")]
-d <- d[,-which(colnames(d) == "UPM4.ROT")]
-d <- d[,-which(colnames(d) == "LP4.PAT")]
-
-
-
-UPM4.LMxP_MR <- d[,"UPM4.LMxP"]
-UPM4.LMxP_MR[which(nchar(UPM4.LMxP_MR) > 1)] <- sapply(1:length(UPM4.LMxP_MR[which(nchar(UPM4.LMxP_MR) > 1)]), function(indiv) substr(UPM4.LMxP_MR[which(nchar(UPM4.LMxP_MR) > 1)][indiv], 1, 1))
-UPM4.LMxP_DR <- d[,"UPM4.LMxP"]
-UPM4.LMxP_DR[which(nchar(UPM4.LMxP_DR) > 1)] <- sapply(1:length(UPM4.LMxP_DR[which(nchar(UPM4.LMxP_DR) > 1)]), function(indiv) substr(UPM4.LMxP_DR[which(nchar(UPM4.LMxP_DR) > 1)][indiv], 3, 3))
-d <- cbind(d, UPM4.LMxP_MR = UPM4.LMxP_MR)
-d <- cbind(d, UPM4.LMxP_DR = UPM4.LMxP_DR)
-d <- d[,-which(colnames(d) == "UPM4.LMxP")]
-
-UPM4.BMxP_MR <- d[,"UPM4.BMxP"]
-UPM4.BMxP_MR[which(nchar(UPM4.BMxP_MR) > 1)] <- sapply(1:length(UPM4.BMxP_MR[which(nchar(UPM4.BMxP_MR) > 1)]), function(indiv) substr(UPM4.BMxP_MR[which(nchar(UPM4.BMxP_MR) > 1)][indiv], 1, 1))
-UPM4.BMxP_DR <- d[,"UPM4.BMxP"]
-UPM4.BMxP_DR[which(nchar(UPM4.BMxP_DR) > 1)] <- sapply(1:length(UPM4.BMxP_DR[which(nchar(UPM4.BMxP_DR) > 1)]), function(indiv) substr(UPM4.BMxP_DR[which(nchar(UPM4.BMxP_DR) > 1)][indiv], 3, 3))
-d <- cbind(d, UPM4.BMxP_MR = UPM4.BMxP_MR)
-d <- cbind(d, UPM4.BMxP_DR = UPM4.BMxP_DR)
-d <- d[,-which(colnames(d) == "UPM4.BMxP")]
-
-d[which(d == "1x2", arr.ind = T)] <- 1
-d[which(d == "1X2", arr.ind = T)] <- 1
-d[which(d == "2x1", arr.ind = T)] <- 1
-d[d == "Rev"] <- NA
-d[which(d[, "UM1.EE"] < 1, arr.ind = T), "UM1.EE"] <- 0
-d[which(d[, "UM2.EE"] < 1, arr.ind = T), "UM2.EE"] <- 0
-d[which(d[, "LM1.EE"] < 1, arr.ind = T), "LM1.EE"] <- 0
-d[which(d[, "LM2.EE"] < 1, arr.ind = T), "LM2.EE"] <- 0
-d[which(d[, "LM2.AF"] < 1, arr.ind = T), "LM2.AF"] <- 0
-d[which(d == "<3", arr.ind = T)] <- "2-"
-d[which(d == "2x2", arr.ind = T)] <- "2"
-d[which(d == "2,2", arr.ind = T)] <- "2"
-d[which(d == "Y,+", arr.ind = T)] <- "1+"
-d[which(d == "", arr.ind = T)] <- 
-d[which(d[, "UM2.EE"] < 1, arr.ind = T), "UM2.EE"] <- 0  
-
-d[do.call(rbind, sapply(1:9, function(name) 
-  which(d == c("agenesis" , "cariou", "could be agenesis need radiograph", "could be agenesis on right", 
-  "left missing postmortem", "IN CRYPT", "in crypts", "post mort loss", "R missing")[name], arr.ind = T)))] <- NA
-d[t(sapply(1:5, function(name) which(d == c("L missing", "missing check CT", "Lmissing, Rimpacted", 
-                                            "missing M3s", "could be agenesis on right, left missing postmortem")[name], arr.ind = T)))] <- NA
-
-
-d[do.call(rbind, sapply(1:3, function(name) which(d == c("P", "P/R", "R")[name], arr.ind = T)))] <- "1"
-d[which(d == "AB", arr.ind = T)] <- 0
-d[which(d == "R 45 M left", arr.ind = T)] <- NA
-d[which(d == "2m", arr.ind = T)] <- 1
-d[which(d == "tomes", arr.ind = T)] <- NA
-d[which(d == "2Bif", arr.ind = T)] <- "1+"
-
-d[which(d == "Z", arr.ind = T)] <- "1+"
-d[which(d == "1M", arr.ind = T)] <- "1+"
-d[which(d == "0-1", arr.ind = T)] <- "1-"
-d[which(d == "2.2", arr.ind = T)] <- "2"
-d[which(d == "pit", arr.ind = T)] <- "0"
-d[which(d == "PIT", arr.ind = T)] <- "0"
-d[which(d == ">2", arr.ind = T)] <- "3+"
-d[which(d == ">1", arr.ind = T)] <- "2+"
-d[which(d == "4  +", arr.ind = T)] <- "4+"
-d[which(d == "1A", arr.ind = T)] <- "0"
-d[which(d == "2*", arr.ind = T)] <- "2"
-
-# d[which(d == "9", arr.ind = T)] 
-d[which(d[, "LM1.EE"] == 9, arr.ind = T), "LM1.EE"] <- NA
-d[which(d[, "LM2.4CUS"] == 0, arr.ind = T), "LM2.4CUS"] <- "5+"
-d[which(d[, "LM3.4CUS"] == 0, arr.ind = T), "LM3.4CUS"] <- "5+"
-
-#recode cusp number into ordinality
-LP3.PLC <- as.numeric(d[, "LP3.PLC"])
-LP3.PLC_recode <- LP3.PLC
-LP3.PLC_recode[LP3.PLC > 7] <- 2
-LP3.PLC_recode[LP3.PLC >= 2 & LP3.PLC <= 7] <- 1
-LP3.PLC_recode[LP3.PLC < 2] <- 0
-d[, "LP3.PLC"] <- as.character(LP3.PLC_recode)
-
-LP4.PLC <- as.numeric(d[, "LP4.PLC"])
-LP4.PLC_recode <- LP4.PLC
-LP4.PLC_recode[LP4.PLC > 7] <- 2
-LP4.PLC_recode[LP4.PLC >= 2 & LP4.PLC <= 7] <- 1
-LP4.PLC_recode[LP4.PLC < 2] <- 0
-d[, "LP4.PLC"] <- as.character(LP4.PLC_recode)
-
-
-d[do.call(rbind, sapply(1:3, function(name) which(d == c("agenesis", "impacted", "missing")[name], arr.ind = T)))] <- NA
-
-d[d == "-"] <- NA
-d[which(d == "-1", arr.ind = T)] <- "1"
-d[which(d == "11", arr.ind = T)] <- "1"
-d[which(d == "1*", arr.ind = T)] <- "1"
-d[which(d == "2.0", arr.ind = T)] <- "2"
-d[which(d == "4.0", arr.ind = T)] <- "4"
-d[which(d == "3.0", arr.ind = T)] <- "3"
-d[which(d == "0.0", arr.ind = T)] <- "0"
-d[which(d == "NA", arr.ind = T)] <- NA
-d[which(d == "3.5", arr.ind = T)] <- "3.4"
-d[which(d == "2.5", arr.ind = T)] <- "2.3"
-d[which(d == "3.1", arr.ind = T)] <- "3.4"
-d[which(d == "1.0", arr.ind = T)] <- "1"
-
-#check for remaining weird values
-unique(as.vector(d[,-(1:2)]))
-d[which(d == "11", arr.ind = T)] 
-colnames(d)[which(d == "8", arr.ind = T)[,2]]
-
-
-#looking at the possible options for each trait
-poss <- sapply(3:139, function(trait) paste0(colnames(d)[trait], ": ", paste0(levels(d[,trait]), collapse = ", "), "\n"))
-nf <- which(sapply(3:139, function(trait) class(d[,trait])) != "factor")
-poss_nf <- sapply(nf, function(trait) paste0(colnames(d)[trait], ": ", paste0(unique(d[,trait]), collapse = ", "), "\n"))
-poss[nf] <- poss_nf
-cat(poss)
-
-d <- d[,-2]
-
-#ok, now let's code the ambiguity matrix
-ambig_d <- d
-d <- ambig_d
-poss_entries <- unique(as.vector(d[,-1]))
-poss_entries
-obs <- matrix(F, nrow =  nrow(d), ncol = ncol(d) - 1)
-observed_inds <- do.call(rbind, sapply(0:9, function(state) which(d[,-1] == as.character(state), arr.ind = T)))
-unobserved_inds <- do.call(rbind, sapply(0:9, function(state) which(d[,-1] != as.character(state), arr.ind = T)))
-obs[observed_inds] <- T
-d_obs <- d[,-1]
-d_obs[unobserved_inds] <- NA
-d_obs[obs] <- d[,-1][obs]
-d[,-1] <- d_obs
-pops <- unique(pop_names)
-
-#missing data patterns
-present <- as.matrix(!is.na(d[,-c(1)]))
-present[present] <- 1
-
-if(doEDA){
-  popcols <- RColorBrewer::brewer.pal(length(unique(d[,1])), "Dark2")
-  popcols <- popcols[as.factor(d[,1])]
-  row_i <- as.vector(matrix(1:nrow(present), nrow = nrow(present), ncol = ncol(present)))
-  col_j <- as.vector(matrix(1:ncol(present), nrow = nrow(present), ncol = ncol(present), byrow = T))
-  cols <- c("white", "black")
-  png("/Volumes/macOS/Users/nikolai/Pictures/bailey_missingdatavisualizaton.png", width = 800, height = 2500)
-  plot(1, 1, ylim = c(20,dim(present)[1]), xlim = c(1,dim(present)[2]), col = "white", bty = "n", xlab = "", ylab = "")
-  title(xlab = "trait index", ylab = "individual index", line = 2.25,  cex.lab = 2)
-  title(main = "missing data visualization\n colors indicate population", cex.main = 4, line = -3)
-  title(main = "black dots indicate trait presence, white dots trait absence", cex.main = 2, line = -5)
-  points(x = col_j, y = row_i, col = cols[as.vector(present)+1], cex = 0.5, pch = 15)
-  points(x = rep(-3, length(popcols)), y = 1:length(popcols), col = popcols, cex = 1.5, pch = 15, cex.main = 2)
-  dev.off()
-
-
-  par(mfrow = c(1,2))
-  plot(sort(apply(present, 1, mean), decreasing = T), type = "l", xlab = "individual index", ylab = "proportion traits present")
-  plot(sort(apply(present, 2, mean), decreasing = T), type = "l", xlab = "trait index", ylab = "proportion individuals present")
-}  
-prop_indiv_filter <- 0.1
-prop_traits_filter <- 0.2
-present_filtered <- present[apply(present, 1, mean) > prop_indiv_filter, apply(present, 2, mean) > prop_traits_filter]
-pop_names <- d[,1]
-d[,1] <- as.factor(d[,1])
-all(levels(d[,1])[as.integer(d[,1])] == d[,1])
-npops <- length(unique(as.integer(d[,1])))
-ntraits <- length(d[1,]) - 2
-per_pop_ntraits_thresh <- 2
-sum(sapply(1:ntraits, function(trait) all(sapply(1:npops, function(pop) sum(present[,trait][as.integer(d[,1]) == pop]))  > per_pop_ntraits_thresh)))
-  
-if(doEDA){
-  par(mfrow = c(1,1))
-  xloc = c(8,25,12,20,17,18,16,11)
-  for(i in 1:length(unique(pop_names))){
-    ngroups_threshold <- i
-    y <- sapply(1:30, function(per_pop_ntraits_thresh) 
-      sum(sapply(1:ntraits, function(trait) sum(sapply(1:npops, function(pop) sum(present[,trait][as.integer(d[,1]) == pop]))  > per_pop_ntraits_thresh) >= ngroups_threshold))
-    )
-    if(i == 1){
-      plot(1:30, y, type = "l", xlab = "number of a traits observed in * populations threshold", ylab = "number of traits", xlim = c(1,30), ylim = c(0,140))
-      text(x = xloc[i], y = y[xloc[i]]+3, labels = paste0("* = ", i))
+MAP_tree <- function(trees, return_posteriorMean_BLs = T, n_trees_to_return = 1){
+  all_the_trees <- trees
+  unique_topologies <- trees[[1]]
+  same_trees <- sapply(1:length(trees), function(tree) RF.dist(trees[[tree]], trees[[1]])) == 0
+  if(n_trees_to_return == "all" & return_posteriorMean_BLs){
+    unique_topologies <- maxCladeCred(trees[same_trees])
+  } else {
+    unique_topologies <- trees[[1]]
+  }
+  n_per_unique_topology <- sum(same_trees)
+  trees <- trees[!same_trees]
+  # while(max(n_per_unique_topology) < length(trees)){
+  while(length(trees) > 0){
+    same_trees <- sapply(1:length(trees), function(tree) RF.dist(trees[[tree]], trees[[1]])) == 0
+    if(n_trees_to_return == "all" & return_posteriorMean_BLs){
+      unique_topologies <- c(unique_topologies, maxCladeCred(trees[same_trees]))
     } else {
-      lines(1:30, y)
-      text(x = xloc[i], y = y[xloc[i]]+3, labels = paste0("* = ", i))
+      unique_topologies <- c(unique_topologies, trees[[1]])
     }
+    n_per_unique_topology <- c(n_per_unique_topology, sum(same_trees))
+    trees <- trees[!same_trees]
+  }
+  map_tree = unique_topologies[[which.max(n_per_unique_topology)]]
+  if(return_posteriorMean_BLs & n_trees_to_return != "all"){
+    map_tree = maxCladeCred(all_the_trees[sapply(1:length(all_the_trees), function(tree) RF.dist(all_the_trees[[tree]], map_tree) == 0)])
+  }
+  if(n_trees_to_return == 1){
+    return(list(map_tree = map_tree, prob = max(n_per_unique_topology) / sum(c(n_per_unique_topology, length(trees)))))
+  }
+  if(return_posteriorMean_BLs & n_trees_to_return == "all"){
+    unique_topologies <- unique_topologies[order(n_per_unique_topology, decreasing = T)]
+    n_per_unique_topology <- sort(n_per_unique_topology, decreasing = T)
+    return(lapply(1:length(n_per_unique_topology), function(tree) list(tree = unique_topologies[tree], 
+                                                                       prob = n_per_unique_topology[tree] / length(all_the_trees))))
   }
 }
-# x <- (sapply(1:ntraits, function(trait) (sapply(1:npops, function(pop) sum(present[,trait][as.integer(d[,1]) == pop])))))
-# apply(x > 8, 1, sum)
-
-#filter out traits based in inflection point
-ngroups_threshold <- 6
-per_pop_ntraits_thresh <- 8
-trait_inds_that_satisfy <- which(sapply(1:ntraits, function(trait) sum(sapply(1:npops, function(pop) sum(present[,trait][as.integer(d[,1]) == pop]) >= per_pop_ntraits_thresh)) >= ngroups_threshold))
-trait_inds_that_dissatisfy <- setdiff(1:ncol(d[,-1]), trait_inds_that_satisfy)
-print(paste0(length(trait_inds_that_satisfy), " traits satisfy the specified criteria of ", ngroups_threshold, " groups at minimum w/ ", per_pop_ntraits_thresh, " individuals at minimum"))
-print("the following traits do not satisfy these criteria:")
-colnames(d[,-(1)])[-c(trait_inds_that_satisfy)]
-# of traits in each pop that satisfy the threshold for individuals w/in pop
-sapply(1:npops, function(pop) sum(sapply(1:ntraits, function(trait) sum(present[,trait][as.integer(d[,1]) == pop]) > per_pop_ntraits_thresh)))
-#this is the population that has the low number of traits
-pop_names[as.integer(d[,1]) == 8]
-table(pop_names)
-
-#filter out traits and prepare final dataset
-d[,1] <- pop_names
-obs <- cbind(d[,1], as.data.frame(obs))
-d <- d[,-(trait_inds_that_dissatisfy+1)]
-ambig_d <- ambig_d[,-(trait_inds_that_dissatisfy+1)]
-obs <- obs[,-(trait_inds_that_dissatisfy+1)]
-
-#filter out individuals with no unambiguous data?
-if(filter_out_0obs_indivs){
-  print(paste0("filtering out ", sum(apply(obs[,-1], 1, sum) == 0), " individuals"))
-  d <- d[-which(apply(obs[,-1], 1, sum) == 0),]
-  ambig_d <- ambig_d[-which(apply(obs[,-1], 1, sum) == 0),]
-  obs <- obs[-which(apply(obs[,-1], 1, sum) == 0),]
+meansNexus <- function (characterMatrix, outputFilePath, traitsOnColumns = T){
+  if (traitsOnColumns) {ntax = dim(characterMatrix)[1]; nchar = dim(characterMatrix)[2]}
+  else {ntax = dim(characterMatrix)[2]; nchar = dim(characterMatrix)[1]}
+  sink(outputFilePath, append=F)
+  cat("#NEXUS\n\nBegin data;\n\tDimensions ntax=", ntax, "nchar=", nchar, ";\n\tFormat datatype=Continuous missing=?;\n\tMatrix\n\n")
+  for(i in 1:length(characterMatrix[,1])) {cat(rownames(characterMatrix)[i], characterMatrix[i,], "\n")}
+  cat(";\nEnd;")
+  sink()
+}
+ratesTSV <- function (rateMatrix, outputFilePath) {
+  if(!isSymmetric(rateMatrix)) {stop("Error: This matrix is not symmetric.")}
+  sink(outputFilePath, append=F)
+  for(i in 1:length(rateMatrix[,1])) {
+    cat(paste0(as.vector(rateMatrix[i, (1:(length(rateMatrix[i,])-1))])), sep = "\t")
+    cat("\t")
+    cat(rateMatrix[i, (length(rateMatrix[i,]))], "\n\n", sep = "")
+  }
+  sink()
+}
+startsWith2 <- function(x, pre){apply(sapply(1:length(pre), function(n) startsWith(x, pre[n])), 1, any)}
+greedyCT <- function(trees){
+  tipNames <- trees[[1]]$tip.label
+  tipNums <- paste0("t", 1:length(tipNames))
+  for(i in 1:length(trees)){
+    trees[[i]]$tip.label <- tipNums[match(trees[[i]]$tip.label, tipNames)]
+  }
+  ape::write.tree(trees, file = "gct_trees.txt")
+  writeLines("gct_trees.txt\nY", con = "consense_script.txt")
+  if(file.exists("outfile")){file.remove("outfile")}
+  if(file.exists("outtree")){file.remove("outtree")}
+  system(paste0("/Applications/phylip-3.695/exe/consense < consense_script.txt"), intern = T)
+  gct <- ape::read.tree("outtree")
+  if(file.exists("outfile")){file.remove("outfile")}
+  if(file.exists("outtree")){file.remove("outtree")}
+  if(file.exists("gct_trees.txt")){file.remove("gct_trees.txt")}
+  if(file.exists("consense_script.txt")){file.remove("consense_script.txt")}
+  gct$tip.label <- tipNames[match(gct$tip.label, tipNums)]
+  return(gct)
+}
+convNum2Str <- function(nums, key){
+  sapply(1:length(nums), function(x) key[nums[x]])
+}
+prop.part.df <- function(trees, cutoff = 0.01, bs = T){
+  if(class(trees) == "multiPhylo"){
+    if(trees[[1]]$Nnode == (length(trees[[1]]$tip.label) - 1)){
+      trees <- unroot(trees) #unroot rooted trees
+    }
+    tipLabs <- trees[[1]]$tip.label
+    numTrees <- length(trees)
+    if(bs) {
+      out <- as.prop.part(bitsplits(trees))
+    } else {
+      out <- prop.part(trees)
+    }
+    outList <- as.list.data.frame(out)
+    pps <- attributes(outList)$number/numTrees
+    props <- data.frame(pps, as.matrix(outList)); colnames(props) <- c("postProbs", "clade")
+    props <- props[order(-pps),]
+    props <- props[props[,1] > cutoff,]
+    rownames(props) <- 1:nrow(props)
+    props$cladeNames <- sapply(1:length(props[,1]), function(x) sort(convNum2Str(props$clade[[x]], attributes(outList)$labels)))
+    props <- props[,c(1,3)]
+    if(!bs) {
+      props <- props[-1,]
+    }
+    allClades <- c(props$cladeNames, lapply(1:length(props$postProbs), function(x) sort(setdiff(tipLabs, props$cladeNames[[x]]))))
+    if(any(duplicated(allClades))){
+      # print("duplicate clades found")
+      dupClades <- allClades[duplicated(allClades)]
+      dupCladesComp <- lapply(1:length(dupClades), function(x) sort(setdiff(tipLabs, dupClades[[x]])))
+      matchedDupes <- cbind(1:length(dupClades), sapply(1:length(dupClades), function(x) which(sapply(1:length(dupCladesComp), function(y) setequal(dupClades[[x]], dupCladesComp[[y]])))))
+      dupes <- matrix(data = 0, nrow = length(matchedDupes[,1])/2, ncol = 2)
+      for(i in 1:length(matchedDupes[,1])){
+        pair <- sort(matchedDupes[i,])
+        if(!any(sapply(1:length(dupes[,1]), function(x) pair == dupes[x,]))){
+          dupes[min(which(apply(dupes, 1, sum) == 0)),] <- pair
+        }
+      }
+      for(i in 1:length(dupes[,1])){
+        clade1 <- dupClades[dupes[i,1]][[1]]
+        clade2 <- dupClades[dupes[i,2]][[1]]
+        propsInd1 <- which(sapply(1:length(props[,1]), function(x) setequal(clade1, props$cladeNames[[x]])))
+        propsInd2 <- which(sapply(1:length(props[,1]), function(x) setequal(clade2, props$cladeNames[[x]])))
+        props[propsInd1,1] <- props[propsInd1,1] + props[propsInd2,1]
+        props <- props[-propsInd2,]
+      }
+      props <- props[order(props[,1], decreasing = T),]
+    }
+    props
+  } else if (class(trees) == "phylo"){
+    if(trees$Nnode == (length(trees$tip.label) - 1)){
+      trees <- unroot(trees) #unroot rooted trees
+    }
+    tipLabs <- trees$tip.label
+    numTrees <- 1
+    if(bs) {
+      out <- as.prop.part(bitsplits(trees))
+    } else {
+      out <- prop.part(trees)
+    }
+    outList <- as.list.data.frame(out)
+    pps <- attributes(outList)$number/numTrees
+    props <- data.frame(pps, as.matrix(outList)); colnames(props) <- c("postProbs", "clade")
+    props <- props[order(-pps),]
+    props <- props[props[,1] > cutoff,]
+    rownames(props) <- 1:nrow(props)
+    props$cladeNames <- sapply(1:length(props[,1]), function(x) sort(convNum2Str(props$clade[[x]], attributes(outList)$labels)))
+    props <- props[,c(1,3)]
+    if(!bs) {
+      props <- props[-1,]
+    }
+    props
+  }
+}
+compareTrees <- function(biparts1, biparts2, tipLabs, returnCladeNames = F){
+  matchProbs <- matrix(0, nrow = sum(length(biparts1[,1]), length(biparts2[,1])), ncol = ifelse(returnCladeNames, 3, 2))
+  counter <- 1
+  biparts2$notSeen <- 1
+  for(clade in 1:length(biparts1[,2])){
+    cladeName <- biparts1[,2][[clade]]
+    isThere <- sapply(1:length(biparts2[,1]), function(x) identical(cladeName, biparts2[x,2][[1]]))
+    altCladeName <- sort(setdiff(tipLabs, cladeName))
+    shortCladeName <- paste0(sort(shorter(cladeName, altCladeName)), collapse = ", ")
+    orIsThere <- sapply(1:length(biparts2[,1]), function(x) identical(altCladeName, biparts2[x,2][[1]]))
+    if(any(isThere)){
+      biparts2$notSeen[isThere] <- 0
+      if(returnCladeNames){
+        matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][isThere], shortCladeName)
+      } else {
+        matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][isThere])
+      }
+    } else if (any(orIsThere)) {
+      biparts2$notSeen[orIsThere] <- 0
+      if(returnCladeNames){
+        matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][orIsThere], shortCladeName)
+      } else {
+        matchProbs[counter,] <- c(biparts1[,1][clade], biparts2[,1][orIsThere])
+      }
+    } else {
+      if(returnCladeNames){
+        matchProbs[counter,] <- c(biparts1[,1][[clade]], 0, shortCladeName)
+      } else {
+        matchProbs[counter,] <- c(biparts1[,1][[clade]], 0)
+      }
+    }
+    counter <- counter + 1
+  }
+  if(sum(biparts2$notSeen) > 0){
+    if(returnCladeNames){
+      cladeNames <- sapply(1:length(biparts2[biparts2$notSeen == 1,2]), function(bip) 
+        paste0(sort(shorter(biparts2[biparts2$notSeen == 1,2][[bip]], sort(setdiff(tipLabs, biparts2[biparts2$notSeen == 1,2][[bip]])))), collapse = ", "))
+      matchProbs[counter:(counter+sum(biparts2$notSeen)-1),] <- cbind(0, cbind(biparts2[biparts2$notSeen == 1,1], cladeNames)) #needs to be an sapply
+    } else {
+      matchProbs[counter:(counter+sum(biparts2$notSeen)-1),] <- cbind(0, biparts2[biparts2$notSeen == 1,1])
+    }
+  }
+  if(returnCladeNames){
+    matchProbs <- matchProbs[rowSums(matchProbs == c(0,0)) != ifelse(returnCladeNames,3,2),]
+  }
+  matchProbs
+}
+clade_prob <- function(tipNames, trees, allTipNames = NA, partfreqs = NA){
+  if(is.na(partfreqs)[1]){
+    clade_monophyly <- prop.part.df(trees, cutoff = 0.00001)
+    if(is.na(allTipNames)[1]){
+      allTipNames <- trees[[1]]$tip.label
+    }
+  } else {
+    clade_monophyly <- partfreqs
+    if(is.na(allTipNames)[1]){
+      allTipNames <- unique(unlist(bipart_probs$cladeNames))
+    }
+  }
+  cladeName <- tipNames
+  clade <- list(allTipNames[startsWith2(allTipNames, cladeName)], allTipNames[!startsWith2(allTipNames, cladeName)])
+  clade_ind <- (sapply(1:length(clade_monophyly$cladeNames), function(x) setequal(clade_monophyly$cladeNames[[x]], clade[[1]]) |
+                         setequal(clade_monophyly$cladeNames[[x]], clade[[2]])))
+  if(all(!clade_ind)){return(0)}
+  # clade_monophyly$cladeNames[clade_ind]
+  return(clade_monophyly$postProbs[clade_ind])
+}
+internal_nodes_probs <- function(tree, trees_to_use){
+  bipart_probs <- prop.part.df(trees_to_use, cutoff = 0.00001)
+  ti <- 1:length(tree$tip.label)
+  tips <- sapply(1:Nnode(tree), function(node) as.numeric(na.omit(ti[getDescendants(tree, length(tree$tip.label) + node)])))
+  tips <- sapply(1:length(tips), function(node) tree$tip.label[tips[[node]]])
+  node_pps <- sapply(1:length(tips), function(node) clade_prob(tipNames = tips[[node]], allTipNames = tree$tip.label, partfreqs = bipart_probs))
+  return(node_pps)
+}
+shorter <- function(x1, x2){
+  if(length(x1) > length(x2)){
+    return(x2)
+  } else{
+    return(x1)
+  }
+}
+betaMove <- function(simplex, index, conc, offset = 1){
+  
+  proposed_value <- rbeta(1, shape1 = simplex[index] * length(simplex) * conc + offset, shape2 = (1 - simplex[index]) * length(simplex) * conc + offset)
+  proposed_simplex <- simplex
+  proposed_simplex[index] <- proposed_value
+  proposed_simplex[-index] <- proposed_simplex[-index] / sum(proposed_simplex[-index]) * (1-proposed_value) 
+  
+  forward_prob <- dbeta(proposed_value, shape1 = simplex[index] * length(simplex) * conc + offset, shape2 = (1 - simplex[index]) * length(simplex) * conc + offset, log = T)
+  backward_prob <- dbeta(simplex[index], shape1 = proposed_value * length(simplex) * conc + offset, shape2 = (1 - proposed_value) * length(simplex) * conc + offset, log = T)
+  
+  return(list(prop = proposed_simplex, log_prop_ratio = backward_prob - forward_prob))
+  
+}
+slideMove <- function(value, window){
+  
+  prop <- runif(1, min = value - window/2, max = value + window/2)
+  return(list(prop = prop, log_prop_ratio = 0))
+  
+}
+scaleMove <- function(value, window){
+  sign_value <- sign(value)
+  prop <- log(abs(value)) + runif(1, min = -window/2, max = window/2)
+  return(list(prop = exp(prop) * sign_value, log_prop_ratio = 0))
+  
+}
+prunePCV <- function(treeCV){ 
+  ntips <- dim(treeCV)[1]
+  contrast <- matrix(0, nrow = ntips-1, ncol = ntips); colnames(contrast) <- colnames(treeCV)
+  BLength <- rep(0, ntips - 1)
+  
+  traitTransforms <- matrix(0, nrow = 2 * ntips - 2, ncol = ntips)
+  traitTransforms[1:ntips, 1:ntips] <- diag(ntips)
+  rownames(traitTransforms) <- c(rownames(treeCV), rep(NA, ntips-2))
+  colnames(traitTransforms) <- rownames(treeCV)
+  for(i in 1:(ntips - 1)){
+    #Find two sister tips
+    #preterminal nodes
+    sisters_i <- which(treeCV == max(treeCV - diag(diag(treeCV))), arr.ind = T)[1,]
+    sisters <- rownames(treeCV)[sisters_i]
+    
+    #calculate contrast between two sister nodes
+    contrast[i,] <- traitTransforms[sisters[1],] - traitTransforms[sisters[2],] 
+    
+    #calculate BL along contrast
+    sister_bl <- c(treeCV[sisters_i[1], sisters_i[1]], treeCV[sisters_i[2], sisters_i[2]]) - treeCV[sisters_i[1], sisters_i[2]]
+    BLength[i] <- sum(sister_bl)
+    
+    #calculate multivariate normal density of contrast along Branch Length
+    
+    if(dim(treeCV)[1] > 2){   
+      tipName = paste(sisters, collapse = "+")
+      tt_index <- which(is.na(rownames(traitTransforms)))[1]
+      rownames(traitTransforms)[tt_index] <- tipName
+      #Fix Trait Matrix
+      nodeValues <- (traitTransforms[sisters[1],] * sister_bl[2] + 
+                       traitTransforms[sisters[2],] * sister_bl[1]) / BLength[i]
+      
+      traitTransforms[tt_index,] <- nodeValues
+      
+      #Fix Tree
+      treeCV[sisters_i[1], sisters_i[1]] <- treeCV[sisters_i[1], sisters_i[1]] - sister_bl[1] + sister_bl[1] * sister_bl[2] / BLength[i] 
+      rownames(treeCV)[sisters_i[1]] <- colnames(treeCV)[sisters_i[1]] <- tipName
+      treeCV <- treeCV[-sisters_i[2], -sisters_i[2]]
+      
+    }
+  }
+  return(list(contrastTransformationMatrix = contrast, contrastBranchLengths = BLength, nodalTraitConditionals = traitTransforms))
+} #slowest step by far
+BMpruneLLuvtChol <- function(rawTraits, sig, tree){ #this function evaluates univariate normal densities
+  U <- chol(sig)
+  L <- t(U)
+  Li <- solve(L)
+  detcov <- det(sig)
+  traits <- t(Li %*% t(rawTraits)); rownames(traits) <- rownames(rawTraits)
+  dim <- dim(sig)[1]
+  LLs <- 0
+  for(i in 1:(length(tree$tip.label) - 1)){
+    #Find two sister tips
+    #preterminal nodes
+    ptn <- tree$edge[sapply(1:length(tree$tip.label), function(t) which(tree$edge[,2] == t)),1]
+    uniq <- unique(ptn)
+    parent <- uniq[which(sapply(1:length(uniq), function (x) sum(uniq[x] == ptn)) > 1)][1]
+    sisters <- tree$edge[tree$edge[,1] == parent, 2]
+    sisters <- intersect(sisters, 1:(length(tree$tip.label)))
+    
+    #calculate contrast between two sister nodes
+    contrast <- traits[tree$tip.label[sisters[1]],] - traits[tree$tip.label[sisters[2]],]
+    
+    #calculate BL separating two sister nodes
+    BLength <- tree$edge.length[tree$edge[,2] == sisters[1]] + tree$edge.length[tree$edge[,2] == sisters[2]]
+    
+    #calculate multivariate normal density of contrast along Branch Length
+    LLs[i] <- sum(dnorm(contrast / BLength^0.5, mean = 0, sd = 1, log = T)) - log(detcov*(BLength^dim))/2
+    
+    #if not pretransforming
+    # LLs[i] <- sum(dnorm((Li/BLength^0.5) %*% contrast, mean = 0, sd = 1, log = T)) - log(detcov*(BLength^dim))/2
+    # LLs[i] <- sum(dnorm(solve(L*BLength^0.5) %*% contrast, mean = 0, sd = 1, log = T)) - log(detcov*(BLength^dim))/2
+    # LLs[i] <- sum(dnorm(solve(t(chol(sig*BLength))) %*% contrast, mean = 0, sd = 1, log = T)) - log(detcov*(BLength^dim))/2
+    
+    if(length(tree$tip.label) > 2){   
+      #Fix Tree and Trait Matrix
+      tipName = paste(tree$tip.label[sisters], collapse = "+")
+      #Fix Trait Matrix
+      nodeValues <- (traits[tree$tip.label[sisters[1]],]*tree$edge.length[tree$edge[,2] == sisters[2]] + traits[tree$tip.label[sisters[2]],]*tree$edge.length[tree$edge[,2] == sisters[1]])/BLength
+      traits <- rbind(traits, nodeValues)
+      rownames(traits)[length(traits[,1])] <- tipName
+      traits <- traits[-c(which(rownames(traits) == tree$tip.label[sisters[1]]), which(rownames(traits) == tree$tip.label[sisters[2]])),]
+      
+      #Fix Tree
+      newTip <- list(edge=matrix(c(2,1),1,2),
+                     tip.label=tipName,
+                     edge.length=(prod(tree$edge.length[tree$edge[,2] == sisters[1]], tree$edge.length[tree$edge[,2] == sisters[2]])/BLength) - tree$edge.length[tree$edge[,2] == sisters[1]],
+                     Nnode=1)
+      class(newTip)<-"phylo"
+      tree <- bind.tree(x = tree, y = newTip, where = sisters[1])
+      tree <- drop.tip(tree, sisters[2])
+    }
+  }
+  return(sum(LLs))
+}
+updateLi <- function(curr_Li, sd_index, change_ratio){
+  if(length(sd_index) == 1){
+    curr_Li[,sd_index] <- curr_Li[,sd_index] / change_ratio
+  } else if(length(sd_index) == nrow(curr_Li)){
+    curr_Li <- curr_Li %*% diag(sqrt(change_ratio))
+  }
+  return(curr_Li)
+}
+updateLi2 <- function(curr_Li, sd_index, change_ratio){
+  curr_Li[,sd_index] <- curr_Li[,sd_index] * sqrt(change_ratio[1])
+  curr_Li[,-sd_index] <- curr_Li[,-sd_index] * sqrt(change_ratio[2])
+  return(curr_Li)
+}
+updateTransformedTraits <- function(means, Li){
+  return(t(Li %*% t(means)))
+}
+updateTransformedContrasts_rate <- function(means, Li, prunes){
+  transformed_contrasts <- prunes[[1]] %*% updateTransformedTraits(means, Li)[rownames(prunes[[3]])[1:nTaxa],]
+  return(transformed_contrasts)
+}
+updateTransformedContrasts_tree <- function(transformed_traits, prunes){
+  transformed_contrasts <- prunes[[1]] %*% transformed_traits[rownames(prunes[[3]])[1:nTaxa],]
+  return(transformed_contrasts)
+}
+updateDetcov <- function(detcov, change_ratio){
+  return(detcov * prod(1 / change_ratio))
+}
+BM_LL_PRECOMPUTE <- function(transformed_contrasts, prunes, detcov){
+  n_traits <- ncol(transformed_contrasts)
+  sum(sapply(1:nrow(transformed_contrasts), function(x) sum(dnorm(transformed_contrasts[x,] / prunes[[2]][x]^0.5, mean = 0, sd = 1, log = T)) - log(detcov*(prunes[[2]][x]^n_traits))/2))
+}
+BMpruneLLmvt <- function(traits, sig, tree){ #this function evaluates multivariate normal densities
+  LLs <- 0
+  for(i in 1:(length(tree$tip.label) - 1)){
+    #Find two sister tips
+    #preterminal nodes
+    ptn <- tree$edge[sapply(1:length(tree$tip.label), function(t) which(tree$edge[,2] == t)),1]
+    uniq <- unique(ptn)
+    parent <- uniq[which(sapply(1:length(uniq), function (x) sum(uniq[x] == ptn)) > 1)][1]
+    sisters <- tree$edge[tree$edge[,1] == parent, 2]
+    sisters <- intersect(sisters, 1:(length(tree$tip.label)))
+    
+    #calculate contrast between two sister nodes
+    contrast <- traits[tree$tip.label[sisters[1]],] - traits[tree$tip.label[sisters[2]],]
+    
+    #calculate BL separating two sister nodes
+    BLength <- tree$edge.length[tree$edge[,2] == sisters[1]] + tree$edge.length[tree$edge[,2] == sisters[2]]
+    
+    #calculate multivariate normal density of contrast along Branch Length
+    LLs[i] <- dmvnorm(x = contrast, sigma = BLength*sig, log = T)
+    
+    if(length(tree$tip.label) > 2){   
+      #Fix Tree and Trait Matrix
+      tipName = paste(tree$tip.label[sisters], collapse = "+")
+      #Fix Trait Matrix
+      nodeValues <- (traits[tree$tip.label[sisters[1]],]*tree$edge.length[tree$edge[,2] == sisters[2]] + traits[tree$tip.label[sisters[2]],]*tree$edge.length[tree$edge[,2] == sisters[1]])/BLength
+      traits <- rbind(traits, nodeValues)
+      rownames(traits)[length(traits[,1])] <- tipName
+      traits <- traits[-c(which(rownames(traits) == tree$tip.label[sisters[1]]), which(rownames(traits) == tree$tip.label[sisters[2]])),]
+      
+      #Fix Tree
+      newTip <- list(edge=matrix(c(2,1),1,2),
+                     tip.label=tipName,
+                     edge.length=(prod(tree$edge.length[tree$edge[,2] == sisters[1]], tree$edge.length[tree$edge[,2] == sisters[2]])/BLength) - tree$edge.length[tree$edge[,2] == sisters[1]],
+                     Nnode=1)
+      class(newTip)<-"phylo"
+      tree <- bind.tree(x = tree, y = newTip, where = sisters[1])
+      tree <- drop.tip(tree, sisters[2])
+    }
+  }
+  return(sum(LLs))
+}
+condMVN <- function(means, cov, obs, inds){
+  A <- cov[-inds, -inds]
+  C <- cov[inds, inds]
+  B <- cov[-inds, inds]
+  condCov <- A - B%*%solve(C)%*%t(B)
+  condMean <- as.vector(means[-inds] + B%*%solve(C)%*%(obs - means[inds]))
+  return(list(means = condMean, cov = condCov))
+}
+estimate_root_brownian_bridge <- function(tree, means, rate_matrix){
+  n_traits <- nrow(rate_matrix)
+  artificial_root_tip <- sample(tree$tip.label, 1)
+  tree_root <- add.tips(tree, tips = "ROOT", where = length(tree$tip.label) + 1, edge.length = 0)
+  tree_root <- reroot(tree_root, node.number = which(tree_root$tip.label == artificial_root_tip))
+  tree_cov <- vcv.phylo(tree_root)
+  tree_cov <- tree_cov[rownames(tree_cov) != artificial_root_tip, rownames(tree_cov) != artificial_root_tip]
+  data_root_cov <- kronecker(tree_cov, rate_matrix)
+  artificial_root_mean <- rep(inferred_empirical_means[rownames(inferred_empirical_means) == artificial_root_tip,], nrow(tree_cov))
+  all_other_means <- inferred_empirical_means[rownames(inferred_empirical_means) != artificial_root_tip,]
+  all_other_means <- all_other_means[colnames(tree_cov)[colnames(tree_cov) != "ROOT"],]
+  all_other_means <- c(t(all_other_means))
+  root_conditional <- condMVN(means = artificial_root_mean, cov = data_root_cov, obs = all_other_means, inds = 1:(n_traits*(nrow(tree_cov)-1)))
+  return(root_conditional)
 }
 
-
-#get individuals list with NAs
-traits_indiv_discr <- lapply(pops, function(pop) apply(d[d[,1] == pop,-1], 2, as.numeric))
-names(traits_indiv_discr) <- pops
-
-#get observed matrix coded properly
-obs <- lapply(pops, function(pop) apply(obs[obs[,1] == pop,-1], 2, as.logical))
-names(obs) <- pops
-
-#get useful variables
-trait_names <- colnames(d[,-1])
-nTaxa <- length(obs)
-d_traits <- ncol(obs[[1]])
+#simulate trees and data
+nrounds <- 10
+nTaxa <- 6
+d_traits <- n_traits <- 114
 useIdentity <- F
 n_sub_matrices <- 1
-n_indiv <- sapply(1:length(obs), function(pop) nrow(obs[[pop]]))
-non_consec_vals <- which(sapply(2:ncol(d), function(trait) !all(diff(sort(as.numeric(unique(d[,trait])[!is.na(unique(d[,trait]))]))) == 1))) + 1
-colnames(d)[non_consec_vals] #to remove, transform, or not?
-sapply(pops, function(pop) d[d[,1]==pop,"UI2.DSH"]) #for example...
-n_thresholds <- sapply(2:ncol(d), function(trait) max(as.numeric(unique(d[,trait])[!is.na(unique(d[,trait]))])))
-max_thresholds_count <- max(n_thresholds)
+n_indiv <- c(119, 51, 84, 97, 135, 198)
+n_thresholds <- c(5, 6, 4, 6, 7, 5, 3, 6, 4, 3, 6, 3, 4, 2, 2, 2, 4, 3, 3, 2, 4, 2, 2, 2, 1, 
+                  4, 3, 1, 8, 5, 5, 7, 4, 3, 3, 3, 3, 5, 5, 5, 7, 4, 3, 3, 5, 3, 5, 5, 5, 7, 
+                  6, 4, 2, 3, 1, 2, 4, 3, 3, 3, 3, 2, 5, 2, 3, 1, 2, 4, 2, 4, 2, 3, 3, 3, 2, 
+                  3, 3, 4, 2, 4, 4, 2, 3, 6, 5, 5, 4, 4, 5, 3, 2, 3, 6, 5, 5, 4, 4, 4, 3, 2, 
+                  3, 7, 5, 5, 4, 4, 4, 3, 4, 3, 3, 3, 3, 3)
+noSmartStart = F
+useStarPhylogeny <- T
+doEDA <- F
+jointThreshAndMeans <- F; jTM_startAtRound <- 6
+combineAsian <- T
+combineSW_ASIAN <- F
+useUPGMAforNRounds <- 0
+weighPCV <- F
 
-#specify constraint array
-constraintArray <- list()
-for(tip in pops){
-  cat(paste0(tip, " "))
-  tmpa <- array(0, dim = c(nrow(traits_indiv_discr[[tip]]), ncol(traits_indiv_discr[[tip]]), max(n_thresholds) + 1))
-  for(i in 1:nrow(tmpa)){
-    for(j in 1:ncol(tmpa)){
-      if(obs[[tip]][i,j]){
-        tmpa[i,j,traits_indiv_discr[[tip]][i,j] + 1] <- 1
-      } else{
-        valid_states <- ambig_d[ambig_d[,1] == tip,-1][i,j]
-        poss_states <- 0:(n_thresholds[j])
-        
-        if(is.na(valid_states)){
-          valid_states <- poss_states
-        } else if(length(grep(".", valid_states)) != 0){
-          vst1 <- as.integer(substr(valid_states, 1, 1))
-          vst2 <- as.integer(substr(valid_states, 3, 3))
-          valid_states <- c(vst1, vst2)
-        } else if(length(grep("+", valid_states)) != 0){
-          valid_states <- as.integer(substr(valid_states, 1, 1))
-          valid_states <- valid_states:max(poss_states)
-        } else if(length(grep("-", valid_states)) != 0){
-          valid_states <- as.integer(substr(valid_states, 1, 1))
-          valid_states <- min(poss_states):valid_states
-        }
-        
-        tmpa[i,j,valid_states + 1] <- 1
-      }
-    }
+weighPCV <- F
+MCAR <- F #missing data is coded with state '9'
+ignoreImputedData <- F
+nrounds_to_not_impute <- 4
+
+useUPGMAforNRounds <- 0
+useNearPDforTree <- F
+jointThreshAndMeans <- F
+stochastic_imputation <- T
+MNAR_Imputation <- T
+updateAllAtOnce <- T #impute each missing value as you iterate through them, or all at once at the end?
+ignoreOtherImputedStates <- T
+use_conditional_probs_for_observed_data <- F
+use_conditional_probs_for_unobserved_data <- T
+impose_constraints <- T #should we impose constraints on the missing data at all?
+constraint_probs <-  c(0.1,0.1,0.1,0.7) # for c("+", "-", "adj", "NA")
+use_imputed_data_for_corrs <- F
+useUPGMA <- F
+use_univariate_normals_for_conditionals <- T
+use_observed_numerator_ALL_conditionals_denominator <- T
+use_conditional_multinomial_approx <- T
+add_individuals_to_missing <- F
+adjust_conds_at_pop_level <- F
+use_conditional_expectation <- F
+
+
+missing_base_prob <- 0.45
+missing_base_state <- 2
+per_state_logit_incr <- 0.5
+logit_scale_pts <- -(cumsum(rep(per_state_logit_incr, max(n_thresholds + 1))) - missing_base_state * per_state_logit_incr - logit(missing_base_prob))
+# logit_scale_pts <- runif(-2,2, n = max(n_thresholds + 1))
+
+extraFilename <- ""
+trees1 <- read.tree(file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", 1, ".trees"))
+trees2 <- read.tree(file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", 2, ".trees"))
+trees3 <- read.tree(file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", 3, ".trees"))
+
+all_trees <- c(trees1, trees2, trees3)
+samp_index <- sample(1:length(all_trees), 1)
+tree <- midpoint(all_trees[samp_index][[1]])
+
+rates1 <- (read.table(file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", 1, ".txt")))
+rates2 <- (read.table(file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", 2, ".txt")))
+rates3 <- (read.table(file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", 3, ".txt")))
+
+all_rates <- do.call(rbind, list(rates1, rates2, rates3))
+rates <- all_rates[samp_index,]
+
+R <- as.matrix(read.table(paste0("output/nearPD_Corr", extraFilename, ".txt")))
+weight <- 0.02
+R <- (R + weight*diag(n_traits)) / (1 + weight)
+R <- diag(sqrt(rates)) %*% R %*% diag(sqrt(rates))
+
+thresholds <- as.matrix(read.table("output/mean_of_thresholds_collapseAsia.txt"))
+threshold_spacings <- t(apply(thresholds, 1, diff))
+threshold_spacings[is.na(threshold_spacings)] <- Inf
+thresholds <- cbind(rep(0, d_traits), threshold_spacings)
+thresholds <- t(apply(thresholds, 1, cumsum))
+threshold_diffs <- t(sapply(1:d_traits, function(trait) diff(thresholds[trait,])))
+threshold_diffs[is.na(threshold_diffs)] <- Inf
+
+#sample root state from appropriate conditional
+inferred_empirical_means <- as.matrix(read.table(paste0("output/mean_of_means", extraFilename, ".txt")))
+root_conditional <- estimate_root_brownian_bridge(tree, inferred_empirical_means, R)
+root_state <- rmvnorm(1, mean = root_conditional$means, sigma = root_conditional$cov)
+
+#for use with a single threshold
+# if(n_thresholds %% 2 == 1){root_state <- thresholds[,(median(1:n_thresholds))]} else {root_state <- (thresholds[,(median(1:n_thresholds) - 0.5)] + thresholds[,(median(1:n_thresholds) + 0.5)]) / 2}
+
+traits <- mvSIM(tree, model="BM1", param=list(sigma=R, theta=root_state)) 
+
+#simulate thresholded traits at the population level
+traits_indiv <- lapply(1:nTaxa, function(tip) rmvnorm(n = n_indiv[tip], mean = traits[tip,], sigma = R)); names(traits_indiv) <- rownames(traits)
+traits_indiv_discr <- lapply(1:nTaxa, function(tip) t(sapply(1:n_indiv[tip], function(indiv) sapply(1:d_traits, function(trait) sum(traits_indiv[[tip]][indiv,trait] - thresholds[trait,] > 0))))); 
+names(traits_indiv_discr) <- names(traits_indiv) 
+
+#simulate missing data
+traits_indiv_discr_true <- traits_indiv_discr
+traits_indiv_discr <- traits_indiv_discr_true
+obs <- traits_indiv_discr
+if(MCAR){
+  for(tip in 1:nTaxa){
+    obs[[tip]] <- matrix(data = as.logical(rbinom(n = length(as.vector(traits_indiv_discr[[tip]])), size = 1, prob = 1-missing_base_prob)),
+                         nrow = nrow(traits_indiv_discr[[tip]]),
+                         ncol = ncol(traits_indiv_discr[[tip]]))
+    traits_indiv_discr[[tip]][!obs[[tip]]] <- NA
+    
   }
-  constraintArray[[tip]] <- tmpa
-}
-
-
-
-
-########################################
-### now we are ready to do inference ###
-########################################
-
-#first pass initialization of all missing states to their tip's median value
-avmode <- function(x) {
-  if(all(is.na(x))){return(1)}
-  ux <- unique(x[!is.na(x)])
-  ux[which.max(tabulate(match(as.vector(x), ux)))]
-}
-for(tip in pops){
-  for(indiv in 1:length(traits_indiv_discr[[tip]][,1])){
-    whichNA <- which(is.na(traits_indiv_discr[[tip]][indiv,]))
-    traits_indiv_discr[[tip]][indiv,whichNA] <- apply(as.matrix(traits_indiv_discr[[tip]][,whichNA]), 2, avmode)
-  }
-}
-
-#identify unique site patterns
-traits_indiv_discr_unique <- lapply(pops, function(tip) uniqueSP(traits_indiv_discr[[tip]]))
-# names(traits_indiv_discr_unique) <- pops
-dat <- as.data.frame(do.call(rbind, lapply(1:nTaxa, function(tip) traits_indiv_discr_unique[[tip]]$SPs)))
-colnames(dat) <- trait_names
-dat2 = data.frame(nSP = unlist(lapply(1:nTaxa, function(tip) traits_indiv_discr_unique[[tip]]$counts)),
-                  tip = unlist(lapply(1:nTaxa, function(tip) rep(tip, length(traits_indiv_discr_unique[[tip]]$counts)))))
-
-dat <- dat_orig <- cbind(dat, dat2)
-
-#better init
-thresholds_init <- matrix(rep(0:(max_thresholds_count-1), d_traits), nrow = d_traits, ncol = max_thresholds_count,  byrow = T) / 2
-thresholds_init <- t(sapply(1:d_traits, function(trait) c(thresholds_init[trait,1:n_thresholds[trait]], rep(Inf, max_thresholds_count - n_thresholds[trait]))))
-threshold_diffs_init <- t(sapply(1:d_traits, function(trait) diff(thresholds_init[trait,]))); threshold_diffs_init[is.na(threshold_diffs_init)] <- Inf
-n_thresh <- sapply(1:length(thresholds_init[,1]), function(trait) length((thresholds_init[trait,])))
-locations <- cbind(rep(-0.5, d_traits), thresholds_init, rep(Inf, d_traits))
-infs_first_index <- sapply(1:d_traits, function(trait) which(locations[trait,] == Inf)[1])
-for(i in 1:d_traits){locations[i,infs_first_index] <- locations[i,infs_first_index-1] + 0.5}
-init_cor <- cor(do.call(rbind, lapply(pops, function(x) (traits_indiv_discr[[x]]))))
-init_cor[is.na(init_cor)] <- 0
-
-#initialize beta regularizing param
-init_cor_beta <- init_cor[upper.tri(init_cor)]
-init_cor_beta <- (init_cor_beta + 1) / 2
-estBetaParams <- function(mu, var) {
-  alpha <- ((1 - mu) / var - 1 / mu) * mu ^ 2
-  beta <- alpha * (1 / mu - 1)
-  return(c(alpha, beta))
-}
-init_cor_beta <- estBetaParams(mean(init_cor_beta), var(init_cor_beta))
-marginal_beta_from_LKJ <- function(eta, dim){
-  #this function retrieves the marginal rescaled beta distribution of each correlation parameter of an LKJ distribution with specified eta
-  return(rep(eta - 1 + dim / 2, 2))
-}
-init_cor_beta <- marginal_beta_from_LKJ(1, d_traits)
-init_cor_beta <- c(10,10)
-
-#initialize means
-init_means <- t(sapply(pops, function(tip) 
-  sapply(1:length(traits_indiv_discr[[tip]][1,]), function(trait) mean(
-    sapply(1:length(traits_indiv_discr[[tip]][,1]), function(indiv) 
-      mean(locations[trait, c(traits_indiv_discr[[tip]][indiv,][trait] + 1, traits_indiv_discr[[tip]][indiv,][trait] + 2)]))
-  )
-  )
-)
-)
-
-rownames(init_means) <- pops; colnames(init_means) <- trait_names
-
-# thresh_mu_init <- 1
-# thresh_sd_init <- 100
-lambda_init <- 0.01
-
-par <- c(c(t(init_means)), 10, init_cor[upper.tri(init_cor)], c(threshold_diffs_init), lambda_init, init_cor_beta)
-
-#get the data that ignores imputed values ready
-traits_indiv_discr9 <- traits_indiv_discr
-for(tip in pops){
-  for(indiv in 1:length(traits_indiv_discr[[tip]][,1])){
-    whichNA <- which(!(obs[[tip]][indiv,]))
-    traits_indiv_discr9[[tip]][indiv,whichNA] <- 9 #here stands for a missing trait to be ignored
-  }
-}
-traits_indiv_discr_unique9 <- lapply(pops, function(tip) uniqueSP(traits_indiv_discr9[[tip]]))
-# names(traits_indiv_discr_unique9) <- pops
-dat9 <- as.data.frame(do.call(rbind, lapply(1:nTaxa, function(tip) traits_indiv_discr_unique9[[tip]]$SPs)))
-colnames(dat9) <- trait_names
-dat29 = data.frame(nSP = unlist(lapply(1:nTaxa, function(tip) traits_indiv_discr_unique9[[tip]]$counts)),
-                   tip = unlist(lapply(1:nTaxa, function(tip) rep(tip, length(traits_indiv_discr_unique9[[tip]]$counts)))))
-
-dat9 <- dat_orig9 <- cbind(dat9, dat29)
-
-#get mahalonibis distance matrix
-mahDistMat_init <- mahaMatrix(init_means, init_cor, squared = F)
-
-#compute tree
-njTree_init <- nj(mahDistMat_init) #can use outgroup for rooting
-njTree_init$edge.length[njTree_init$edge.length < 0] <- 0
-njTree_init <- reroot(tree = njTree_init, node.number = which(njTree_init$tip.label == "NEAND"), position = njTree_init$edge.length[which(njTree_init$edge[,2] == which(njTree_init$tip.label == "NEAND"))] / 2)
-plot(njTree_init)
-upgmaTree_init <- upgma(mahDistMat_init)
-if(useUPGMA){
-  treeCV_init <- cov2cor(vcv.phylo(upgmaTree_init))
 } else {
-  treeCV_init <- cov2cor(vcv.phylo(njTree_init))
-}
-if(weighPCV){treeCV_init <- (treeCV_init + diag(nTaxa)) / 2} #weight with star phylogeny
-if(useStarPhylogeny){
-  treeCV_init[upper.tri(treeCV_init)] <- 0
-  treeCV_init[lower.tri(treeCV_init)] <- 0
-}
-prunes_init <- prunePCV(treeCV_init)
-
-#TEST IF ALGORITHM WORKS
-thresh_trait_ind <- sample(1:d_traits, 1)
-par_to_opt_ind <- nTaxa*d_traits+2+choose(d_traits, 2) + 0:(max_thresholds_count-2) * d_traits + thresh_trait_ind - 1
-par_to_opt_ind <- par_to_opt_ind[1:(n_thresholds[thresh_trait_ind]-1)]
-#thresholds AND all the means for that threshold?
-par_to_opt_ind <- c(thresh_trait_ind + d_traits*0:(nTaxa-1), par_to_opt_ind) #thresholds AND all the means for that threshold?
-# par <- c(c(t(traits)), 10, R[upper.tri(R)], c(threshold_diffs_init)) #try using true par values to check for good behavior
-# par_to_opt_ind <- length(par) + c(-1,0)
-par_to_opt_ind <- 5 #mean
-par_to_opt_ind <- (nTaxa * d_traits + 2) #correlation
-par_to_opt_ind <- (nTaxa * d_traits + 1 + choose(d_traits, 2) + (max_thresholds_count-1) * d_traits) + c(2,3) #correlation regularizing beta
-par_to_opt <- par[par_to_opt_ind]
-type_of_param <- ifelse(par_to_opt_ind[1] <= nTaxa * d_traits, ifelse(par_to_opt_ind[length(par_to_opt_ind)] > nTaxa * d_traits, "tr-m", "m"), 
-                 ifelse(par_to_opt_ind[1] == (nTaxa * d_traits + 1), "v",
-                 ifelse(par_to_opt_ind[1] > (nTaxa * d_traits + 1) & par_to_opt_ind[1] <= (nTaxa * d_traits + 1 + choose(d_traits, 2)), "c", 
-                 ifelse(par_to_opt_ind[1] > (nTaxa * d_traits + 1 + choose(d_traits, 2)) & 
-                   par_to_opt_ind[1] <= (nTaxa * d_traits + 1 + choose(d_traits, 2) + (max_thresholds_count-1) * d_traits), "t", 
-                 ifelse(par_to_opt_ind == (nTaxa * d_traits + 1 + choose(d_traits, 2) + (max_thresholds_count-1) * d_traits) + 1, "t-r",
-                 ifelse(all.equal(sort(par_to_opt_ind), (nTaxa * d_traits + 1 + choose(d_traits, 2) + (max_thresholds_count-1) * d_traits) + c(2,3)), "c-r", ""))))))
-print(type_of_param)
-k_par <- par
-k_par[par_to_opt_ind] <- NA  
-dat <- list(dat_orig, k_par, prunes_init, pops, n_thresh)
-dat <- list(dat_orig, k_par, prunes_init, pops, n_thresh, getUniqueSitePatterns(par_to_opt, dat)) 
-logLL_bivProb_optim_multithresh(par_to_opt = par_to_opt, dat =  dat)
-logLL_bivProb_optim_multithresh(rep(100,2), dat)
-
-# sapply(1:1000/100, function(asdf) logLL_bivProb_optim_multithresh(asdf, dat))
-
-fast = T
-method <- "L-BFGS-B"
-if(!fast){
-  t_s <- Sys.time()
-  optim_out <- optim(par = par_to_opt, logLL_bivProb_optim_multithresh, dat = dat, method = method, control = list(trace = 0, REPORT = 10),
-                     upper = c(rep(Inf, nTaxa * d_traits + 1), rep(1, choose(d_traits, 2)), rep(Inf, (max_thresholds_count-1) * d_traits))[par_to_opt_ind], 
-                     lower = c(rep(-Inf, nTaxa * d_traits), 0, rep(-1, choose(d_traits, 2)), rep(0, (max_thresholds_count-1) * d_traits))[par_to_opt_ind])
-  Sys.time() - t_s
-  optim_out$par
-  threshold_diffs[,thresh_trait_ind]
-}
-
-
-################################################################################
-################################################################################
-################################################################################
-
-############################ Start Inference Here ##############################
-
-################################################################################
-################################################################################
-################################################################################
-
-
-
-
-tic()
-ncore <- 1; mclapply_over_foreach <- T;
-nparam <- length(par)
-prunes <- prunes_init
-
-if(noSmartStart){
-  starTree <- diag(length(njTree_init$tip.label))
-  colnames(starTree) <- rownames(starTree) <- (njTree_init$tip.label)
-  prunes <- prunePCV(starTree*10)
-  par <- par <- c(rep(0, length(c(t(init_means)))), 10, rep(0, length(init_cor[upper.tri(init_cor)])), 
-                  c(threshold_diffs_init), lambda_init, init_cor_beta)
-}
-
-
-for(i in 1:nrounds){
-  cat(paste0("\n", "round ", i, ": "))
-  param_ord <- as.list(sample(c(1:(nTaxa*d_traits+1+choose(d_traits, 2))))) #univ optim, double emphasis on correlation parameters and threshold diffs
-  # param_ord <- as.list(sample(c(1:nparam))) #univ optim, double emphasis on correlation parameters and threshold diffs
-  thresh_trait_ind <- sample(which(n_thresholds > 1))
-  par_to_opt_ind <- lapply(thresh_trait_ind, function(trait) (nTaxa*d_traits+2+choose(d_traits, 2) + 0:(max_thresholds_count-2) * d_traits + trait - 1)[0:(n_thresholds[trait]-1)])
-  if(jointThreshAndMeans & i >= jTM_startAtRound){
-    par_to_opt_ind <- lapply(thresh_trait_ind, function(trait) c(trait + d_traits*0:(nTaxa-1),
-                                                                 (nTaxa*d_traits+2+choose(d_traits, 2) + 0:(max_thresholds_count-2) * d_traits + trait - 1)[0:(n_thresholds[trait]-1)]))
-  }
-  if(T){
-    param_ord <- c(par_to_opt_ind, param_ord)
-  } else {
-    param_ord <- sample(c(par_to_opt_ind, param_ord))
-  }
-  
-  #add in the threshold regularizing terms at the end
-  param_ord <- (c(param_ord, list(((nTaxa*d_traits+1+choose(d_traits, 2)) + sum(n_thresh-1)) + 1)))
- 
-  #add in the correlation regularizing terms at the end
-  # param_ord <- (c(param_ord, list(((nTaxa*d_traits+1+choose(d_traits, 2)) + sum(n_thresh-1)) + c(2,3))))
-   
-  num_iters_passed <- 0
-  for(par_to_opt_ind in param_ord){
-    type_of_param <- ifelse(par_to_opt_ind[1] <= nTaxa * d_traits, ifelse(par_to_opt_ind[length(par_to_opt_ind)] > nTaxa * d_traits, "tr-m", "m"), 
-                            ifelse(par_to_opt_ind[1] == (nTaxa * d_traits + 1), "v",
-                                   ifelse(par_to_opt_ind[1] > (nTaxa * d_traits + 1) & par_to_opt_ind[1] <= (nTaxa * d_traits + 1 + choose(d_traits, 2)), "c", 
-                                          ifelse(par_to_opt_ind[1] > (nTaxa * d_traits + 1 + choose(d_traits, 2)) & 
-                                                   par_to_opt_ind[1] <= (nTaxa * d_traits + 1 + choose(d_traits, 2) + (max_thresholds_count-1) * d_traits), "t", 
-                                                 ifelse(par_to_opt_ind == (nTaxa * d_traits + 1 + choose(d_traits, 2) + (max_thresholds_count-1) * d_traits) + 1, "t-r",
-                                                        ifelse(all.equal(sort(par_to_opt_ind), (nTaxa * d_traits + 1 + choose(d_traits, 2) + (max_thresholds_count-1) * d_traits) + c(2,3)), "c-r", ""))))))
-    cat(paste0("round ", i, ", ", round(num_iters_passed / (length(param_ord) / ncore) * 100), "%: ", type_of_param, "-"))
-    num_iters_passed = num_iters_passed + 1
-    # cat(paste0(par_to_opt_ind, type_of_param, "-"))
-    par_to_opt <- par[par_to_opt_ind]
-    k_par <- par
-    k_par[par_to_opt_ind] <- NA  
-    dat <- list(dat_orig, k_par, prunes, pops, n_thresh)
-    if(type_of_param != "c" | use_imputed_data_for_corrs){
-      corrOK <- T
-    } else {
-      corrOK <- F
-    }
-    # uniqueSitePats <- getUniqueSitePatterns(par_to_opt, dat)
-    if(!ignoreImputedData & (i > nrounds_to_not_impute) & corrOK){
-      uniqueSitePats <- getUniqueSitePatterns(par_to_opt, dat)
-    } else if(ignoreImputedData){
-      uniqueSitePats <- getUniqueSitePatternsIgnoreImputed(par_to_opt, dat)
-    } else if(!ignoreImputedData & (i <= nrounds_to_not_impute) | !corrOK){
-      dat9 <- list(dat_orig9, k_par, prunes, pops, n_thresh)
-      uniqueSitePats <- getUniqueSitePatternsIgnoreImputed(par_to_opt, dat9)
-    }
-    dat <- list(dat_orig, k_par, prunes_init, pops, n_thresh, uniqueSitePats) 
-    upper = c(rep(Inf, nTaxa * d_traits + 1), rep(1, choose(d_traits, 2)), rep(Inf, (max_thresholds_count-1) * d_traits), c(Inf, Inf, Inf, Inf))[par_to_opt_ind]
-    lower = c(rep(-Inf, nTaxa * d_traits), 0.01, rep(-1, choose(d_traits, 2)), rep(0, (max_thresholds_count-1) * d_traits), c(-Inf, 1, 1, 1))[par_to_opt_ind]
-    optim_out <- optim(par = par_to_opt, logLL_bivProb_optim_multithresh, dat = dat, method = method, control = list(trace = 0, REPORT = 1),
-                       upper = upper, lower = lower)
-    if(length(par_to_opt_ind) > 1){
-      cat(paste0("(", round(mean(abs(par[par_to_opt_ind] - optim_out$par)), 2), ")-"))
-    } else {
-      cat(paste0("(", round(par[par_to_opt_ind] - optim_out$par, 2), ")-"))
-    }
-    par[par_to_opt_ind] <- optim_out$par
-  }
-  
-
-  
-  #update tree
-  optim_est <- par
-  R_est <- diag(d_traits)
-  R_est[upper.tri(R_est)] <- optim_est[(nTaxa*d_traits+2) : (nTaxa * d_traits + 1 + choose(d_traits, 2))];
-  R_est <- R_est + t(R_est) - diag(d_traits)
-  R_est_nearPD <- as.matrix(nearPD(R_est, corr = T, maxit = 1E5)$mat)
-  est_means <- matrix(optim_est[1:(nTaxa*d_traits)], ncol = d_traits, nrow = nTaxa, byrow = T, dimnames = list(pops))
-  eigensystem <- eigen(R_est)
-  V <- eigensystem$vectors
-  L <- eigensystem$values
-  PC_Scores <- t(t(V) %*% t(est_means))
-  est_means_PCs <- sapply(1:which.max(cumsum(L)), function(ev) PC_Scores[,ev] / L[ev]^0.5)
-  est_means_PCs <- est_means_PCs[,1:sum(cumsum(eigensystem$values / sum(eigensystem$values)) < 0.99)]
-  
-
-  if(useNearPDforTree){
-    mahDistMat <- mahaMatrix(est_means, R_est_nearPD, squared = F)
-  } else {
-    mahDistMat <- mahaMatrix(est_means_PCs, diag(ncol(est_means_PCs)), squared = F)
-  }
-  upgmaTree <- upgma(mahDistMat)
-  njTree <- nj(mahDistMat)
-  if(weighPCV){treeCV <- (treeCV_init + diag(nTaxa)) / 2} #weight with star phylogeny
-  if(useUPGMA | (i <= useUPGMAforNRounds)){
-    if(!useStarPhylogeny){
-      treeCV <- cov2cor(vcv.phylo(upgmaTree))
-    }
-  } else {
-    njTree$edge.length[njTree$edge.length < 0] <- 0
-    njTree <- reroot(tree = njTree, node.number = which(njTree$tip.label == "NEAND"), position = njTree$edge.length[which(njTree$edge[,2] == which(njTree$tip.label == "NEAND"))] / 2)
-    plot(njTree)
-    if(!useStarPhylogeny){
-      treeCV <- cov2cor(vcv.phylo(njTree))
-    }
-  }
-  if(weighPCV){treeCV <- (treeCV + diag(nTaxa)) / 2} #weight with star phylogeny
-  if(useStarPhylogeny){
-    treeCV <- diag(nTaxa)
-    rownames(treeCV) <- colnames(treeCV) <- pops
-  }
-  prunes <- prunePCV(treeCV)
-  
-  ############################
-  #update imputed missing data
-  ############################
-  if(!ignoreImputedData){
-    #iterate over each missing value and substitute in its likeliest state
-    # current_params <- list(means = traits, cor = R, threshold_mat = thresholds) #for debugging
-    current_params <- recompileMeansCorrsThreshes(par, dat)
-    imputed_probs <- obs
-    for(tip in 1:length(obs)){
-      
-      cat(paste0(ifelse(tip == 1, "\nimputing missing states: ", ""), tip, " "))
-      missing <- which(!obs[[tip]], arr.ind = T) #rows are people, cols are traits
-      missing_scores <- lapply(1:length(missing[,1]), function(x) NA)
-      
-      for(missdat in 1:length(missing[,1])){
-        missinds <- missing[missdat,]
-        other_missing_traits_in_individual <- missing[missing[,1] == missinds[1],2]
-        other_missing_traits_in_individual <- setdiff(other_missing_traits_in_individual, missinds[2])
-        possible_states <- 0:(n_thresholds[missinds[2]])
-        
-        #evaluate -logLik for all poss_states for that tip given the tip mean, the thresholds, and the correlation matrix
-        scores <- evaluateStates(missinds = as.numeric(missinds),
-                                 possible_states = possible_states, 
-                                 tipMeans = current_params$means[tip,], 
-                                 otherStates = traits_indiv_discr[[tip]], 
-                                 threshold_mat = current_params$threshold_mat,
-                                 other_missing_traits_in_individual = other_missing_traits_in_individual,
-                                 cor = current_params$cor,
-                                 ignoreOtherImputedStates = ignoreOtherImputedStates)
-        
-        
-        missing_scores[[missdat]] <- scores
-        if(!updateAllAtOnce){
-          bestState <- which.max(scores) - 1
-          traits_indiv_discr[[tip]][missinds[1], missinds[2]] <- bestState
-        }
-      }
-      
-      imputed_probs[[tip]] <- list(missing, missing_scores)
-    }
+  for(tip in 1:nTaxa){
+    probs_miss <- logit_scale_pts[as.vector(traits_indiv_discr[[tip]]) + 1]
+    probs_miss <- invlogit(probs_miss)
+    cbind(as.vector(traits_indiv_discr[[tip]]), probs_miss)
+    print(table(probs_miss))
+    obs[[tip]] <- matrix(data = as.logical(rbinom(n = length(as.vector(traits_indiv_discr[[tip]])), size = 1, prob = 1-probs_miss)),
+                         nrow = nrow(traits_indiv_discr[[tip]]),
+                         ncol = ncol(traits_indiv_discr[[tip]]))
+    traits_indiv_discr[[tip]][!obs[[tip]]] <- NA
     
-    #find state-specific probabilities of missingness
-    if(MNAR_Imputation){
-      
-      maxStates <- max(n_thresholds) + 1
-      
-      if(!use_conditional_probs_for_observed_data){
-        n_obs_trait_state_per_tip <- lapply(1:length(obs), function(tip)
-          t(sapply(1:ncol(obs[[tip]]), function(trait) countObsStates(traits_indiv_discr[[tip]][obs[[tip]][,trait],trait], maxStates = maxStates))
-          )
-        )
-        
-        #for debugging purposes
-        # n_unobs_trait_state_per_tip <- lapply(1:length(obs), function(tip)
-        #   t(sapply(1:ncol(obs[[tip]]), function(trait) countObsStates(traits_indiv_discr_true[[tip]][!obs[[tip]][,trait],trait], maxStates = maxStates))
-        #   )
-        # )
-        
-      } else if(use_conditional_probs_for_observed_data | (use_observed_numerator_ALL_conditionals_denominator & !use_univariate_normals_for_conditionals)){
-        
-        obs_probs <- obs
-        for(tip in 1:length(obs)){
-          
-          cat(paste0(ifelse(tip == 1, "\nimputing observed states: ", ""), tip, " "))
-          missing <- which(obs[[tip]], arr.ind = T) #rows are people, cols are traits
-          observed <- which(!obs[[tip]], arr.ind = T) #rows are people, cols are traits
-          observed_scores <- lapply(1:length(observed[,1]), function(x) NA)
-          
-          for(obsdat in 1:length(observed[,1])){
-            obsinds <- observed[obsdat,]
-            missing_traits_in_individual <- missing[missing[,1] == obsinds[1],2]
-            possible_states <- 0:(n_thresholds[obsinds[2]])
-            
-            #evaluate -logLik for all poss_states for that tip given the tip mean, the thresholds, and the correlation matrix
-            scores <- evaluateStates(missinds = as.numeric(obsinds),
-                                     possible_states = possible_states, 
-                                     tipMeans = current_params$means[tip,], 
-                                     otherStates = traits_indiv_discr[[tip]], 
-                                     threshold_mat = current_params$threshold_mat,
-                                     other_missing_traits_in_individual = missing_traits_in_individual,
-                                     cor = current_params$cor,
-                                     ignoreOtherImputedStates = ignoreOtherImputedStates)
-            
-            
-            observed_scores[[missdat]] <- scores
-          }
-          
-          obs_probs[[tip]] <- list(observed, observed_scores)
-        }
-        
-        if(use_conditional_probs_for_observed_data){
-          n_obs_trait_state_per_tip <- lapply(1:length(obs_probs), function(tip)
-            countUnobsStates(imputed_probs[[tip]][[1]][,2], imputed_probs[[tip]][[2]], maxStates = maxStates, ntraits = d_traits)
-          )
-        }
-      }
-      
-      if(!use_observed_numerator_ALL_conditionals_denominator){
-        
-        if(use_conditional_probs_for_unobserved_data){
-          
-          n_imputed_trait_state_per_tip <- lapply(1:length(imputed_probs), function(tip)
-            countUnobsStates(trait_inds = imputed_probs[[tip]][[1]][,2], state_probs = imputed_probs[[tip]][[2]], maxStates = maxStates, ntraits = d_traits)
-          )
-          
-        } else if(!use_conditional_probs_for_unobserved_data){
-          
-          n_imputed_trait_state_per_tip <- lapply(1:length(imputed_probs), function(tip)
-            countUnobsStates(trait_inds = imputed_probs[[tip]][[1]][,2], state_probs = imputed_probs[[tip]][[2]], maxStates = maxStates, ntraits = d_traits, use_opt = T)
-          )
-          
-        }
-        
-      } else if(use_observed_numerator_ALL_conditionals_denominator){
-        if(use_univariate_normals_for_conditionals){
-          #TODO perform univariate estimation of all conditional frequencies
-          
-          conditional_expectation_per_tip <- lapply(1:length(obs), function(tip) t(sapply(1:ncol(current_params$means), function(trait)
-            computeUnivNormalStateProbs(mean = current_params$means[tip, trait], thresholds = current_params$threshold_mat[trait,], npop = nrow(obs[[tip]])))
-          ))
-          
-          conditional_probs_per_tip <- lapply(1:length(obs), function(tip) t(sapply(1:ncol(current_params$means), function(trait)
-            computeUnivNormalStateProbs(mean = current_params$means[tip, trait], thresholds = current_params$threshold_mat[trait,]))
-          ))
-          
-          if(use_conditional_multinomial_approx){
-            
-            conditionals_less_observed <-  lapply(1:length(obs), function(tip) t(sapply(1:ncol(current_params$means), function(trait)
-              apply(approxMultinomialCond(probs = conditional_probs_per_tip[[tip]][trait,], obs_counts = n_obs_trait_state_per_tip[[tip]][trait,], 
-                                          total_count = nrow(obs[[tip]]), min_sample_size = 500, raw = T, mcmc_rescue = 4, troubleshoot = F), 2, mean)
-            )))
-            
-          } else if(use_conditional_expectation){
-            
-            conditional_distribution_per_tip <- conditional_expectation_per_tip
-            
-          }
-          
+  }
+}
+
+#simulate constraints on missing data
+if(impose_constraints){
+  constraintArray <- list()
+  for(tip in 1:nTaxa){
+    tmpa <- array(0, dim = c(nrow(traits_indiv_discr[[tip]]), ncol(traits_indiv_discr[[tip]]), max(n_thresholds) + 1))
+    for(i in 1:nrow(tmpa)){
+      for(j in 1:ncol(tmpa)){
+        if(obs[[tip]][i,j]){
+          tmpa[i,j,traits_indiv_discr[[tip]][i,j] + 1] <- 1
         } else{
+          #simulate constraint
+          valid_states <- traits_indiv_discr_true[[tip]][i,j]
+          type <- sample(size = 1, c("+", "-", "adj", "NA"), prob = constraint_probs)
+          poss_states <- 0:(n_thresholds[j])
           
-          n_obs_conds_state_per_tip <- lapply(1:length(obs_probs), function(tip)
-            countUnobsStates(imputed_probs[[tip]][[1]][,2], imputed_probs[[tip]][[2]], maxStates = maxStates, ntraits = d_traits)
-          )
+          if(type == "+"){
+            valid_states <- valid_states:max(poss_states)
+          }
           
-          #combine the two sets of conditionals
-          conditional_distribution_per_tip <- lapply(1:length(obs), function(tip)
-            n_obs_conds_state_per_tip[[tip]] + n_imputed_trait_state_per_tip[[tip]]
-          )
-        }
-      }
-      
-      if(use_observed_numerator_ALL_conditionals_denominator){
-        
-        if(!use_conditional_multinomial_approx){
-          conditionals_less_observed <- lapply(1:length(obs), function(tip)
-            computeConditionalsLessObserved(conditionals = conditional_distribution_per_tip[[tip]], observed = n_obs_trait_state_per_tip[[tip]], 
-                                            npop = ifelse(adjust_conds_at_pop_level, nrow(obs[[tip]]), NA), addPop = add_individuals_to_missing)
-          )
-        }
-        trait_specific_missing_probs <- find_missing_probs(n_obs_trait_state_per_tip, conditionals_less_observed, per_pop = F, raw = F, per_trait = T)
-        print("estimated missing probs:")
-        print(find_missing_probs(n_obs_trait_state_per_tip, conditionals_less_observed, per_pop = F, raw = T, per_trait = F))
-        
-        
-      } else {
-        
-        trait_specific_missing_probs <- find_missing_probs(n_obs_trait_state_per_tip, n_imputed_trait_state_per_tip, per_pop = F, raw = F)
-        print("estimated missing probs:")
-        print(find_missing_probs(n_obs_trait_state_per_tip, n_imputed_trait_state_per_tip, per_pop = F, raw = F, per_trait = F))
-        
-      }
-    }
-    
-    if(updateAllAtOnce){
-      for(tip in 1:length(obs)){
-        missing <- imputed_probs[[tip]][[1]]
-        missing_scores <- imputed_probs[[tip]][[2]]
-        for(missdat in 1:length(missing[,1])){
-          missinds <- missing[missdat,]
-          possible_states <- 0:(n_thresholds[missinds[2]])
-          scores <- missing_scores[[missdat]]
-          if(stochastic_imputation){
-            stateProbs <- softmax(scores)
-            if(MNAR_Imputation){
-              missing_cond_probs <- trait_specific_missing_probs[missinds[2],1:length(stateProbs)]
+          if(type == "-"){
+            valid_states <- min(poss_states):valid_states
+          }
+          
+          if(type == "adj"){
+            above <- sample(c(T,F), 1)
+            if(above){
+              valid_states <- c(valid_states, valid_states+1)
             } else{
-              missing_cond_probs <- rep(0.1, length(stateProbs))
+              valid_states <- c(valid_states, valid_states-1)
             }
-            stateProbs <- bayesian_normalize(stateProbs, missing_cond_probs)
-            if(impose_constraints){
-              if(any(stateProbs * constraintArray[[tip]][missinds[1], missinds[2],][possible_states + 1] != 0)){
-                stateProbs <- bayesian_normalize(stateProbs, constraintArray[[tip]][missinds[1], missinds[2],][possible_states + 1])
+            if(all(max(valid_states) > poss_states) | all(min(valid_states) < poss_states)){
+              above <- !above
+              valid_states <- traits_indiv_discr_true[[tip]][i,j]
+              if(above){
+                valid_states <- c(valid_states, valid_states+1)
+              } else{
+                valid_states <- c(valid_states, valid_states-1)
               }
             }
-            bestState <- sample(0:(length(stateProbs)-1), size = 1, prob = stateProbs)
-          } else {
-            bestState <- which.max(scores) - 1
           }
-          traits_indiv_discr[[tip]][missinds[1], missinds[2]] <- bestState
+          
+          if(type == "NA"){
+            valid_states <- poss_states
+          }
+          
+          tmpa[i,j,valid_states + 1] <- 1
         }
       }
     }
-    
-    traits_indiv_discr_unique <- lapply(pops, function(tip) uniqueSP(traits_indiv_discr[[tip]]))
-    dat <- as.data.frame(do.call(rbind, lapply(1:npops, function(tip) traits_indiv_discr_unique[[tip]]$SPs)))
-    colnames(dat) <- trait_names
-    dat2 = data.frame(nSP = unlist(lapply(1:npops, function(tip) traits_indiv_discr_unique[[tip]]$counts)),
-                      tip = unlist(lapply(1:npops, function(tip) rep(tip, length(traits_indiv_discr_unique[[tip]]$counts)))))
-    dat_orig <- cbind(dat, dat2)
+    constraintArray[[tip]] <- tmpa
   }
-  
 }
-toc()
 
-# EXAMINING OUTPUT
-meanNARM <- function(x){mean(x, na.rm = T)}
-trait_specific_missing_probs[1,((n_thresholds + 1)[1]+1):9] <- NA
-plot(trait_specific_missing_probs[1, 1:(n_thresholds + 1)[1]], type = "l", xlim = c(1,9), ylim = c(0,1))
-for(i in 2:nrow( trait_specific_missing_probs)){
-  if((n_thresholds + 1)[i] != ncol(trait_specific_missing_probs)){
-    trait_specific_missing_probs[i,((n_thresholds + 1)[i]+1):9] <- NA
-  }
-  lines(trait_specific_missing_probs[i, 1:((n_thresholds + 1)[i])])
-}
-lines(apply(trait_specific_missing_probs, 2, meanNARM), lwd = 2, col = 2)
 
-#save current parameter estimates to disk
-curr_est_index <- max(sapply(1:length(list.files(paste0("data", ifelse(jointThreshAndMeans, "_joint_thresh_means" , "") ,""))), 
-                             function(prms) as.numeric(strsplit(list.files("data")[prms], split = "_")[[1]][length(strsplit(list.files("data")[prms], split = "_")[[1]])])), na.rm = T) + 1
-if(!exists("curr_est_index")){curr_est_index <- 1}
-save(current_params, file = paste0("data", ifelse(jointThreshAndMeans, "_joint_thresh_means" , "") ,"/est_params_", 
-                                   ifelse(combineAsian, "", "noPanAsian_"), ifelse(combineSW_ASIAN, "combineSWasian_", ""),
-                                   ifelse(useUPGMA,"UPGMA_","NJ_"), ifelse(useStarPhylogeny,"Star_",""), curr_est_index))

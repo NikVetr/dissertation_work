@@ -1,5 +1,8 @@
 setwd("/Volumes/1TB/Bailey/")
 
+noPanAsian <- F
+SWAsian <- F
+
 library(MCMCpack)
 library(microbenchmark)
 library(phytools)
@@ -423,14 +426,19 @@ BMpruneLLmvt <- function(traits, sig, tree){ #this function evaluates multivaria
 
 #simulate data
 
-means <- as.matrix(read.table("output/mean_of_means.txt"))
+extraFilename <- ""
+if(noPanAsian){extraFilename <- "_noPanAsian"}
+if(SWAsian){extraFilename <- "_SWAsian"}
+
+means <- as.matrix(read.table(paste0("output/mean_of_means", extraFilename, ".txt")))
 nTaxa <- nrow(means)
 n_traits <- ncol(means)
 
-R <- as.matrix(read.table("output/nearPD_Corr.txt"))
+R <- as.matrix(read.table(paste0("output/nearPD_Corr", extraFilename, ".txt")))
 weight <- 0.02
 R <- (R + weight*diag(n_traits)) / (1 + weight)
-max(abs(as.matrix(read.table("output/nearPD_Corr.txt")) - R))
+max(abs(as.matrix(read.table(paste0("output/nearPD_Corr", extraFilename, ".txt"))) - R))
+det(R)
 
 #specify priors
 
@@ -672,12 +680,13 @@ rates <- rates[(burnin_prop*n_out):n_out,]
 lls <- lls[(burnin_prop*n_out):n_out]
 rate_regs <- rate_regs[(burnin_prop*n_out):n_out]
 
+
 output_files <- list.files("output") 
-curr_index <- length(output_files[grep(output_files, pattern = "fixCorrs_infRates_allTraits_trees_regRates")])
-write.tree(phy = trees, file = paste0("output/fixCorrs_infRates_allTraits_trees_regRates_", curr_index, ".trees"))
-write.table(rates, file = paste0("output/fixCorrs_infRates_allTraits_rates_regRates_", curr_index, ".txt"))
-write.table(lls, file = paste0("output/fixCorrs_infRates_allTraits_lls_regRates_", curr_index, ".txt"))
-write.table(rate_regs, file = paste0("output/fixCorrs_infRates_allTraits_rateRegs_regRates_", curr_index, ".txt"))
+curr_index <- length(output_files[grep(output_files, pattern = paste0("fixCorrs_infRates_allTraits_trees_regRates", extraFilename))])
+write.tree(phy = trees, file = paste0("output/fixCorrs_infRates_allTraits_trees_regRates", extraFilename, "_", curr_index, ".trees"))
+write.table(rates, file = paste0("output/fixCorrs_infRates_allTraits_rates_regRates", extraFilename, "_", curr_index, ".txt"))
+write.table(lls, file = paste0("output/fixCorrs_infRates_allTraits_lls_regRates", extraFilename, "_", curr_index, ".txt"))
+write.table(rate_regs, file = paste0("output/fixCorrs_infRates_allTraits_rateRegs_regRates", extraFilename, "_", curr_index, ".txt"))
 
 n_accept / n_prop 
 
@@ -692,53 +701,53 @@ effectiveSize(sapply(1:length(trees), function(x) sum(trees[[x]]$edge.length)))
 
 #read in all data for comparison
 
-# trees0 <- read.tree(file = "output/fixCorrs_infRates_allTraits_trees_0.trees")
-# trees1 <- read.tree(file = "output/fixCorrs_infRates_allTraits_trees_1.trees")
-# trees2 <- read.tree(file = "output/fixCorrs_infRates_allTraits_trees_2.trees")
-# trees3 <- read.tree(file = "output/fixCorrs_infRates_allTraits_trees_3.trees")
-# 
-# lls0 <- c(read.table(file = "output/fixCorrs_infRates_allTraits_lls_0.txt"))
-# lls1 <- c(read.table(file = "output/fixCorrs_infRates_allTraits_lls_1.txt"))
-# lls2 <- c(read.table(file = "output/fixCorrs_infRates_allTraits_lls_2.txt"))
-# lls3 <- c(read.table(file = "output/fixCorrs_infRates_allTraits_lls_3.txt"))
-# 
-# plot(unlist(c(lls0, lls1, lls2)))
-# effectiveSize(unlist(c(lls0, lls1, lls2)))
-# 
-# all_trees <- c(trees0, trees1, trees2)
-# effectiveSize(sapply(1:length(all_trees), function(x) sum(all_trees[[x]]$edge.length)))
-# 
-# rates0 <- (read.table(file = "output/fixCorrs_infRates_allTraits_rates_0.txt"))
-# rates1 <- (read.table(file = "output/fixCorrs_infRates_allTraits_rates_1.txt"))
-# rates2 <- (read.table(file = "output/fixCorrs_infRates_allTraits_rates_2.txt"))
-# rates3 <- (read.table(file = "output/fixCorrs_infRates_allTraits_rates_3.txt"))
-# 
-# effectiveSize(do.call(rbind, list(rates0, rates1, rates2)))
-# 
-# bip_probs0 <- prop.part.df(trees0)
-# bip_probs1 <- prop.part.df(trees1)
-# bip_probs2 <- prop.part.df(trees2)
-# bip_probs3 <- prop.part.df(trees3)
-# 
-# bip_probs0$cladeNames <- sapply(1:length(bip_probs0$cladeNames), function(clade) 
-#   sapply(1:length(strsplit(bip_probs0$cladeNames[[clade]], split = "-")), function(name)
-#     paste0(strsplit(bip_probs0$cladeNames[[clade]], split = "-")[[name]], collapse = "")))
-# 
-# bip_probs1$cladeNames <- sapply(1:length(bip_probs1$cladeNames), function(clade) 
-#   sapply(1:length(strsplit(bip_probs1$cladeNames[[clade]], split = "-")), function(name)
-#     paste0(strsplit(bip_probs1$cladeNames[[clade]], split = "-")[[name]], collapse = "")))
-# 
-# bip_probs2$cladeNames <- sapply(1:length(bip_probs2$cladeNames), function(clade) 
-#   sapply(1:length(strsplit(bip_probs2$cladeNames[[clade]], split = "-")), function(name)
-#     paste0(strsplit(bip_probs2$cladeNames[[clade]], split = "-")[[name]], collapse = "")))
-# 
-# bip_probs3$cladeNames <- sapply(1:length(bip_probs3$cladeNames), function(clade) 
-#   sapply(1:length(strsplit(bip_probs3$cladeNames[[clade]], split = "-")), function(name)
-#     paste0(strsplit(bip_probs3$cladeNames[[clade]], split = "-")[[name]], collapse = "")))
-# 
-# 
-# tipLabs <- c("NEAND",  "AUSNG", "ASIAN",  "AMER",   "SSAF",   "EUR")
-# plot(compareTrees(bip_probs0, bip_probs1, tipLabs = tipLabs))
-# plot(compareTrees(bip_probs0, bip_probs2, tipLabs = tipLabs))
-# plot(compareTrees(bip_probs0, bip_probs3, tipLabs = tipLabs))
+trees0 <- read.tree(file = "output/fixCorrs_infRates_allTraits_trees_regRates_0.trees")
+trees1 <- read.tree(file = "output/fixCorrs_infRates_allTraits_trees_regRates_1.trees")
+trees2 <- read.tree(file = "output/fixCorrs_infRates_allTraits_trees_regRates_2.trees")
+trees3 <- read.tree(file = "output/fixCorrs_infRates_allTraits_trees_regRates_3.trees")
+
+lls0 <- c(read.table(file = "output/fixCorrs_infRates_allTraits_lls_0.txt"))
+lls1 <- c(read.table(file = "output/fixCorrs_infRates_allTraits_lls_1.txt"))
+lls2 <- c(read.table(file = "output/fixCorrs_infRates_allTraits_lls_2.txt"))
+lls3 <- c(read.table(file = "output/fixCorrs_infRates_allTraits_lls_3.txt"))
+
+plot(unlist(c(lls0, lls1, lls2)))
+effectiveSize(unlist(c(lls0, lls1, lls2)))
+
+all_trees <- c(trees0, trees1, trees2)
+effectiveSize(sapply(1:length(all_trees), function(x) sum(all_trees[[x]]$edge.length)))
+
+rates0 <- (read.table(file = "output/fixCorrs_infRates_allTraits_rates_0.txt"))
+rates1 <- (read.table(file = "output/fixCorrs_infRates_allTraits_rates_1.txt"))
+rates2 <- (read.table(file = "output/fixCorrs_infRates_allTraits_rates_2.txt"))
+rates3 <- (read.table(file = "output/fixCorrs_infRates_allTraits_rates_3.txt"))
+
+effectiveSize(do.call(rbind, list(rates0, rates1, rates2)))
+
+bip_probs0 <- prop.part.df(trees0)
+bip_probs1 <- prop.part.df(trees1)
+bip_probs2 <- prop.part.df(trees2)
+bip_probs3 <- prop.part.df(trees3)
+
+bip_probs0$cladeNames <- sapply(1:length(bip_probs0$cladeNames), function(clade)
+  sapply(1:length(strsplit(bip_probs0$cladeNames[[clade]], split = "-")), function(name)
+    paste0(strsplit(bip_probs0$cladeNames[[clade]], split = "-")[[name]], collapse = "")))
+
+bip_probs1$cladeNames <- sapply(1:length(bip_probs1$cladeNames), function(clade)
+  sapply(1:length(strsplit(bip_probs1$cladeNames[[clade]], split = "-")), function(name)
+    paste0(strsplit(bip_probs1$cladeNames[[clade]], split = "-")[[name]], collapse = "")))
+
+bip_probs2$cladeNames <- sapply(1:length(bip_probs2$cladeNames), function(clade)
+  sapply(1:length(strsplit(bip_probs2$cladeNames[[clade]], split = "-")), function(name)
+    paste0(strsplit(bip_probs2$cladeNames[[clade]], split = "-")[[name]], collapse = "")))
+
+bip_probs3$cladeNames <- sapply(1:length(bip_probs3$cladeNames), function(clade)
+  sapply(1:length(strsplit(bip_probs3$cladeNames[[clade]], split = "-")), function(name)
+    paste0(strsplit(bip_probs3$cladeNames[[clade]], split = "-")[[name]], collapse = "")))
+
+
+tipLabs <- c("NEAND",  "AUSNG", "ASIAN",  "AMER",   "SSAF",   "EUR")
+plot(compareTrees(bip_probs0, bip_probs1, tipLabs = tipLabs))
+plot(compareTrees(bip_probs0, bip_probs2, tipLabs = tipLabs))
+plot(compareTrees(bip_probs0, bip_probs3, tipLabs = tipLabs))
 
