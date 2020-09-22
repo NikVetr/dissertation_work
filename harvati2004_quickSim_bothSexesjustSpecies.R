@@ -247,8 +247,8 @@ postDists_tables <- lapply(1:100, function(pd) table(postDists[pd,])  / sum(tabl
 
 
 
-
-png(filename = "~/Documents/Harvati_Reanalysis_Manuscript/figures/figure3_final.png", width = 2400, height = 800)
+grDevices::cairo_pdf(filename = "dissertation/figures/harvati_figure3_final.pdf", width = 2400 / 72, height = 800 / 72)
+# png(filename = "~/Documents/Harvati_Reanalysis_Manuscript/figures/figure3_final.png", width = 2400, height = 800)
 par(mfrow = c(1, 3))
 
 #histogram of mcc rf-dists
@@ -375,7 +375,8 @@ mvBM_mismatched_clades_simProbs <- lapply(1:nrow(mvBM_mismatched_clades), functi
   t(sapply(1:100, function(sim) fixDZ(as.numeric(compTrees_cladeNames[[sim]][compTrees_cladeNames[[sim]][,3] == mvBM_mismatched_clades[clade,3], 1:2]))))
 )
 
-png(filename = "~/Documents/Harvati_Reanalysis_Manuscript/figures/figure6_final.png", width = 2400, height = 800)
+grDevices::cairo_pdf(filename = "dissertation/figures/harvati_figure6_final.pdf", width = 2400 / 72, height = 800 / 72)
+# png(filename = "~/Documents/Harvati_Reanalysis_Manuscript/figures/figure6_final.png", width = 2400, height = 800)
 par(mfrow = c(2, 3))
 par(mar=c(9,9.5,5,1))
 

@@ -253,7 +253,8 @@ abline(0,1)
 
 
 #making the actual figure
-png(filename = "~/Documents/Harvati_Reanalysis_Manuscript/figures/figure4_final.png", width = 2200, height = 750)
+grDevices::cairo_pdf(filename = "dissertation/figures/harvati_figure4_final.pdf", width = 2200 / 72, height = 750 / 72)
+# png(filename = "~/Documents/Harvati_Reanalysis_Manuscript/figures/figure4_final.png", width = 2200, height = 750)
 layout(matrix(c(1,1,2), nrow = 1, ncol = 3, byrow = TRUE))
 par(xpd=TRUE)
 
@@ -342,8 +343,8 @@ corrMatrices_m_perc <- sapply(1:length(P_m_corrs[upper.tri(corrMatrices_m_mean)]
 
 
 
-
-png(filename = "~/Documents/Harvati_Reanalysis_Manuscript/figures/figure5_final.png", width = 2000, height = 500)
+grDevices::cairo_pdf(filename = "dissertation/figures/harvati_figure5_final.pdf", width = 2000 / 72, height = 500 / 72)
+# png(filename = "~/Documents/Harvati_Reanalysis_Manuscript/figures/figure5_final.png", width = 2000, height = 500)
 layout(matrix(c(1,1,2,2,4,4,5,5,1,1,3,3,4,4,6,6), nrow = 2, ncol = 8, byrow = TRUE))
 
 par(mar=c(8,8,8,3))

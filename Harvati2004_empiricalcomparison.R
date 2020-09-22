@@ -1217,7 +1217,7 @@ textsiz = 4
 ########################################
 ########################################
 
-png(filename = "Documents/Harvati_Reanalysis_Manuscript/figures/figure1_final.png", width = 2800, height = 3000)
+grDevices::cairo_pdf(filename = "dissertation/figures/harvati_figure1_final.pdf", width = 2800 / 72, height = 3000 / 72)
 # par(mfrow = c(4, 3))
 
 
@@ -1622,7 +1622,8 @@ textsiz = 4
 
 
 #making the actual figre
-png(filename = "Documents/Harvati_Reanalysis_Manuscript/figures/figure2_final.png", width = 2800, height = 1500)
+# png(filename = "Documents/Harvati_Reanalysis_Manuscript/figures/figure2_final.png", width = 2800, height = 1500)
+grDevices::cairo_pdf(filename = "dissertation/figures/harvati_figure2_final.pdf", width = 2800 / 72, height = 1500 / 72)
 par(mfrow = c(2, 2))
 
 #vs. nj tree

@@ -16,13 +16,16 @@ library(tictoc)
 library(gtools)
 
 #specify analysis parameters
-nrounds <- 16
+nrounds <- 12
 noSmartStart = F
 useStarPhylogeny <- T
-doEDA <- F
+doEDA <- T
 jointThreshAndMeans <- F; jTM_startAtRound <- 6
-combineAsian <- T
+combineAsian <- F
 combineSW_ASIAN <- F
+remove_NEAS <- F
+remove_SAS <- F
+remove_WAS <- F
 useUPGMAforNRounds <- 0
 weighPCV <- F
 MCAR <- F #missing data is coded with state '9'
@@ -1107,8 +1110,20 @@ if(combineSW_ASIAN){
   pop_names[sw_asian_indices] <- "SWAS"
   d[,1] <- pop_names
 }
-table(pop_names)
 
+#remove Asian populations?
+if(remove_NEAS){
+  asian_indices <- as.logical(sapply(1:length(pop_names), function(name) length(intersect(c("NEAS"), pop_names[name]))))
+  d <- d[-which(asian_indices),]
+  pop_names <- d[,1]
+}
+if(remove_SAS){
+  asian_indices <- as.logical(sapply(1:length(pop_names), function(name) length(intersect(c("SAS"), pop_names[name]))))
+  d <- d[-which(asian_indices),]
+  pop_names <- d[,1]
+}
+
+table(pop_names)
 
 #recode the data
 d[d == ""] <- NA
@@ -1282,6 +1297,9 @@ pops <- unique(pop_names)
 present <- as.matrix(!is.na(d[,-c(1)]))
 present[present] <- 1
 
+prop_indiv_filter <- 0.1
+prop_traits_filter <- 0.2
+
 if(doEDA){
   popcols <- RColorBrewer::brewer.pal(length(unique(d[,1])), "Dark2")
   popcols <- popcols[as.factor(d[,1])]
@@ -1298,12 +1316,13 @@ if(doEDA){
   dev.off()
 
 
-  par(mfrow = c(1,2))
+  par(mfrow = c(1,3))
   plot(sort(apply(present, 1, mean), decreasing = T), type = "l", xlab = "individual index", ylab = "proportion traits present")
+  # abline(h = prop_indiv_filter, lty = 2)
   plot(sort(apply(present, 2, mean), decreasing = T), type = "l", xlab = "trait index", ylab = "proportion individuals present")
+  # abline(h = prop_traits_filter, lty = 2)
 }  
-prop_indiv_filter <- 0.1
-prop_traits_filter <- 0.2
+
 present_filtered <- present[apply(present, 1, mean) > prop_indiv_filter, apply(present, 2, mean) > prop_traits_filter]
 pop_names <- d[,1]
 d[,1] <- as.factor(d[,1])
@@ -1314,19 +1333,24 @@ per_pop_ntraits_thresh <- 2
 sum(sapply(1:ntraits, function(trait) all(sapply(1:npops, function(pop) sum(present[,trait][as.integer(d[,1]) == pop]))  > per_pop_ntraits_thresh)))
   
 if(doEDA){
-  par(mfrow = c(1,1))
+  # par(mfrow = c(1,1))
+  if(!exists("y")){
+    y <- as.list(1:length(unique(pop_names)))
+    for(i in 1:length(unique(pop_names))){
+      ngroups_threshold <- i
+      y[[i]] <- sapply(1:30, function(per_pop_ntraits_thresh) 
+        sum(sapply(1:ntraits, function(trait) sum(sapply(1:npops, function(pop) sum(present[,trait][as.integer(d[,1]) == pop]))  > per_pop_ntraits_thresh) >= ngroups_threshold))
+      )
+    }
+  }
   xloc = c(8,25,12,20,17,18,16,11)
   for(i in 1:length(unique(pop_names))){
-    ngroups_threshold <- i
-    y <- sapply(1:30, function(per_pop_ntraits_thresh) 
-      sum(sapply(1:ntraits, function(trait) sum(sapply(1:npops, function(pop) sum(present[,trait][as.integer(d[,1]) == pop]))  > per_pop_ntraits_thresh) >= ngroups_threshold))
-    )
     if(i == 1){
-      plot(1:30, y, type = "l", xlab = "number of a traits observed in * populations threshold", ylab = "number of traits", xlim = c(1,30), ylim = c(0,140))
-      text(x = xloc[i], y = y[xloc[i]]+3, labels = paste0("* = ", i))
+      plot(1:30, y[[i]], type = "l", xlab = "number of a traits observed in * populations threshold", ylab = "number of traits", xlim = c(1,30), ylim = c(0,140))
+      text(x = xloc[i], y = y[[i]][xloc[i]]+3, labels = paste0("* = ", i))
     } else {
-      lines(1:30, y)
-      text(x = xloc[i], y = y[xloc[i]]+3, labels = paste0("* = ", i))
+      lines(1:30, y[[i]])
+      text(x = xloc[i], y = y[[i]][xloc[i]]+3, labels = paste0("* = ", i))
     }
   }
 }
@@ -1335,6 +1359,7 @@ if(doEDA){
 
 #filter out traits based in inflection point
 ngroups_threshold <- 6
+if(remove_NEAS & remove_SAS){ngroups_threshold <- 5}
 per_pop_ntraits_thresh <- 8
 trait_inds_that_satisfy <- which(sapply(1:ntraits, function(trait) sum(sapply(1:npops, function(pop) sum(present[,trait][as.integer(d[,1]) == pop]) >= per_pop_ntraits_thresh)) >= ngroups_threshold))
 trait_inds_that_dissatisfy <- setdiff(1:ncol(d[,-1]), trait_inds_that_satisfy)
@@ -1940,5 +1965,6 @@ curr_est_index <- max(sapply(1:length(list.files(paste0("data", ifelse(jointThre
                              function(prms) as.numeric(strsplit(list.files("data")[prms], split = "_")[[1]][length(strsplit(list.files("data")[prms], split = "_")[[1]])])), na.rm = T) + 1
 if(!exists("curr_est_index")){curr_est_index <- 1}
 save(current_params, file = paste0("data", ifelse(jointThreshAndMeans, "_joint_thresh_means" , "") ,"/est_params_", 
-                                   ifelse(combineAsian, "", "noPanAsian_"), ifelse(combineSW_ASIAN, "combineSWasian_", ""),
+                                   ifelse(combineAsian, "", "noPanAsian_"), ifelse(combineSW_ASIAN, "combineSWasian_", ""), 
+                                   ifelse(remove_NEAS, "noNEAsian_", ""), ifelse(remove_SAS, "noSAsian_", ""), 
                                    ifelse(useUPGMA,"UPGMA_","NJ_"), ifelse(useStarPhylogeny,"Star_",""), curr_est_index))

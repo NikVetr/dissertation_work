@@ -1,11 +1,3 @@
-setwd("/Volumes/1TB/Bailey/")
-
-noPanAsian <- T
-SWAsian <- F
-noNEAsian <- T
-noSAsian <- F
-runAnalysis <- T
-
 library(MCMCpack)
 library(microbenchmark)
 library(phytools)
@@ -13,6 +5,7 @@ library(phangorn)
 library(mvMORPH)
 library(tictoc)
 library(mvtnorm)
+
 
 MAP_tree <- function(trees, return_posteriorMean_BLs = T, n_trees_to_return = 1){
   all_the_trees <- trees
@@ -47,7 +40,7 @@ MAP_tree <- function(trees, return_posteriorMean_BLs = T, n_trees_to_return = 1)
     unique_topologies <- unique_topologies[order(n_per_unique_topology, decreasing = T)]
     n_per_unique_topology <- sort(n_per_unique_topology, decreasing = T)
     return(lapply(1:length(n_per_unique_topology), function(tree) list(tree = unique_topologies[tree], 
-                                                                prob = n_per_unique_topology[tree] / length(all_the_trees))))
+                                                                       prob = n_per_unique_topology[tree] / length(all_the_trees))))
   }
 }
 
@@ -267,14 +260,22 @@ betaMove <- function(simplex, index, conc, offset = 1){
   forward_prob <- dbeta(proposed_value, shape1 = simplex[index] * length(simplex) * conc + offset, shape2 = (1 - simplex[index]) * length(simplex) * conc + offset, log = T)
   backward_prob <- dbeta(simplex[index], shape1 = proposed_value * length(simplex) * conc + offset, shape2 = (1 - proposed_value) * length(simplex) * conc + offset, log = T)
   
-  return(list(prop = proposed_simplex, log_prop_ratio = backward_prob - forward_prob))
+  return(list(prop = proposed_simplex, log_prop_ratio = (backward_prob - forward_prob)))
   
 }
 
-slideMove <- function(value, window){
+slideMove <- function(value, window, min = -Inf, max = Inf){
   
-  prop <- runif(1, min = value - window/2, max = value + window/2)
-  return(list(prop = prop, log_prop_ratio = 0))
+  low_bound <- max(value - window/2, min)
+  high_bound <- min(value + window/2, max)
+  prop <- runif(1, min = low_bound, max = high_bound)
+  
+  forward_log_prob <- log(1 / (high_bound - low_bound))
+  backward_low_bound <- max(prop - window/2, min)
+  backward_high_bound <- min(prop + window/2, max)
+  backward_log_prob <- log(1 / (backward_high_bound - backward_low_bound))
+  
+  return(list(prop = prop, log_prop_ratio = backward_log_prob - forward_log_prob))
   
 }
 
@@ -462,40 +463,56 @@ BMpruneLLmvt <- function(traits, sig, tree){ #this function evaluates multivaria
   return(sum(LLs))
 }
 
+BMpruneLL_MVN <- function(means, tree, rate_matrix){
+  
+  rerooted_tree <- reroot(tree, node.number = 1)
+  tree_vcv <- vcv.phylo(rerooted_tree)
+  tree_vcv <- tree_vcv[-which(rownames(tree_vcv) == tree$tip.label[1]), -which(rownames(tree_vcv) == tree$tip.label[1])]
+  root_mean <- means[rownames(means) == tree$tip.label[1],]
+  other_means <- means[rownames(means) != tree$tip.label[1],][rownames(tree_vcv),]
+  data_vcv <- kronecker(tree_vcv, rate_matrix)
+  data_vec <- c(t(other_means))
+  logprobdens <- mvtnorm::dmvnorm(x = data_vec, mean = rep(root_mean, nrow(other_means)), sigma = data_vcv, log = T)
+  return(logprobdens)  
+  
+}
+
+
+
+
 ### MCMC ###
+underPrior <- T
+useSimplexSlideMoves <- T
+debug_bugs <- F
+fixTrueRM <- F
+no_ratereg <- F
+only_rates <- F
+only_rate_reg  <- F
+dont_take_rate_dens_in_rate_reg <- F
+raise_ratereg_to_nrates_power <- F
 
 #simulate data
-
-extraFilename <- ""
-if(noPanAsian){extraFilename <- "_noPanAsian"}
-if(SWAsian){extraFilename <- "_SWAsian"}
-if(noNEAsian){extraFilename <- "_noNEAsian"}
-if(noSAsian){extraFilename <- "_noSAsian"}
-if(noSAsian & noNEAsian){extraFilename <- "_noNEAsian_noSAsian"}
-
-means <- as.matrix(read.table(paste0("output/mean_of_means", extraFilename, ".txt")))
-nTaxa <- nrow(means)
-n_traits <- ncol(means)
-
-R <- as.matrix(read.table(paste0("output/nearPD_Corr", extraFilename, ".txt")))
-weight <- 0.02
-R <- (R + weight*diag(n_traits)) / (1 + weight)
-max(abs(as.matrix(read.table(paste0("output/nearPD_Corr", extraFilename, ".txt"))) - R))
-det(R)
-
-if(runAnalysis){
+nTaxa <- 8
+n_traits <- 10
+tree <- pbtree(n = nTaxa, nsim = 1)
+R <- rethinking::rlkjcorr(1, n_traits, 1)
+sds <- diag(runif(n = n_traits, 1, 5))
+sds <- sds / sqrt((mean((diag(sds)^2))))
+Rm <- (sds) %*% R %*% (sds)
+means <- mvSIM(tree = tree, nsim = 1, model = "BM1", param = list(ntraits = n_traits, sigma=Rm, mu= rep(0,n_traits)))
 
 #specify priors
-
-trait_rates_conc_param_mean_sd_offset <- c()
-trait_rates_conc_params <- rep(1, n_traits)
+trait_rates_conc_param_mean_sd_offset <- c(0, 1, 1)
 bls_conc_params <- rep(1, 2*nTaxa-3)
 tree_prior <- "uniform"
 TL_log_prior <- c(1,1)
 
 #initialize chain
+curr_trait_rates_conc_params <- rep(1.1, n_traits)
+if(no_ratereg){curr_trait_rates_conc_params <- rep(1, n_traits)}
 curr_tree <- rtree(n = nTaxa, rooted = F, tip.label = rownames(means))
 curr_relative_rates <- rep(1 / n_traits, n_traits)
+if(fixTrueRM){curr_relative_rates <- diag(Rm) / sum(diag(Rm))}
 curr_rates <- curr_relative_rates * n_traits
 curr_Rm <- diag(sqrt(curr_rates)) %*% R %*% diag(sqrt(curr_rates))
 curr_detcov <- det(curr_Rm)
@@ -515,24 +532,29 @@ BMpruneLLuvtChol(means, sig = diag(sqrt(curr_rates)) %*% R %*% diag(sqrt(curr_ra
 BMpruneLLmvt(means, diag(sqrt(curr_rates)) %*% R %*% diag(sqrt(curr_rates)), curr_tree)
 
 #specify chain params
-n_iter <- 1E7
+n_iter <- 2E7
 thin <- 5E3
 n_out <- round(n_iter/thin)
 burnin_prop = 0.3
-proposal_probs <- c(2,8,1,2) #c("topology", "rates", "TL", "BLs")
+proposal_probs <- c(2,8,1,2,1) #c("topology", "rates", "TL", "BLs", "rate_reg)
+if(fixTrueRM){proposal_probs <- c(2,0,1,2,0)}
+if(no_ratereg){proposal_probs <- c(2,8,1,2,0)}
+if(only_rates){proposal_probs <- c(0,8,0,0,2)}
+if(only_rate_reg){proposal_probs <- c(0,0,0,0,2)}
 proposal_probs <- proposal_probs / sum(proposal_probs)
 onlyNNI <- F
 n_tree_moves <- 1
-
 
 #initialize chain record
 trees <- rmtree(N = n_out, n = nTaxa); trees[[1]] <- curr_tree
 rates <- matrix(0, nrow = n_out, ncol = n_traits); rates[1,] <- curr_rates
 lls <- rep(0, n_out); lls[1] <- curr_ll
-n_prop <- rep(0, 4)
-n_accept <- rep(0, 4) 
+rate_regs <- rep(1.1, n_out)
+n_prop <- rep(0, 5)
+n_accept <- rep(0, 5) 
 
 #initialize floating proposals
+prop_trait_rates_conc_params <- curr_trait_rates_conc_params
 prop_tree <- curr_tree
 prop_relative_rates <- curr_relative_rates
 prop_rates <- curr_rates
@@ -548,8 +570,6 @@ prop_prunes <- curr_prunes
 prop_transformed_contrasts <- curr_transformed_contrasts
 prop_ll <- curr_ll
 
-
-debug_bugs <- F
 tic()
 for(i in 2:n_iter){
   
@@ -561,7 +581,7 @@ for(i in 2:n_iter){
     }
   
   #propose a move and calculate prior density and 
-  type_of_move <- sample(c("topology", "rates", "TL", "BLs"), size = 1, prob = proposal_probs)
+  type_of_move <- sample(c("topology", "rates", "TL", "BLs", "rate_reg"), size = 1, prob = proposal_probs)
   
   if(type_of_move == "topology"){
     n_prop[1] <- n_prop[1] + 1
@@ -573,9 +593,12 @@ for(i in 2:n_iter){
     if(type_of_topology_move == "SPR"){
       prop_tree <- rSPR(curr_tree)
     }
-    prop_prunes <- prunePCV(vcv.phylo(prop_tree))
-    prop_transformed_contrasts <- updateTransformedContrasts_tree(transformed_traits = curr_transformed_traits, prunes = prop_prunes)
-    prop_detcov <- curr_detcov
+    
+    if(!underPrior){
+      prop_prunes <- prunePCV(vcv.phylo(prop_tree))
+      prop_transformed_contrasts <- updateTransformedContrasts_tree(transformed_traits = curr_transformed_traits, prunes = prop_prunes)
+      prop_detcov <- curr_detcov
+    }
     log_prop_ratio <- 0
     log_prior_ratio <- 0
   }
@@ -586,12 +609,21 @@ for(i in 2:n_iter){
     which_BL <- sample(1:length(curr_tree$edge.length), 1)
     curr_bls <- prop_tree$edge.length
     curr_relative_bls <- curr_bls / curr_TL
-    prop_bl_info <- betaMove(curr_relative_bls, index = which_BL, conc = 5)
-    prop_relative_bls <- prop_bl_info$prop
+    if(useSimplexSlideMoves){
+      prop_bl_info <- slideMove(curr_relative_bls[which_BL], window = 0.05, min = 0, max = 1)
+      prop_relative_bls <- curr_relative_bls
+      prop_relative_bls[which_BL] <- prop_bl_info$prop
+      prop_relative_bls[-which_BL] <- prop_relative_bls[-which_BL] / sum(prop_relative_bls[-which_BL]) * (1-prop_bl_info$prop)
+    } else{
+      prop_bl_info <- betaMove(curr_relative_bls, index = which_BL, conc = 5)
+      prop_relative_bls <- prop_bl_info$prop
+    }
     prop_bls <- prop_relative_bls * curr_TL
     prop_tree$edge.length <- prop_bls
-    prop_prunes <- prunePCV(vcv.phylo(prop_tree))
-    prop_transformed_contrasts <- updateTransformedContrasts_tree(transformed_traits = curr_transformed_traits, prunes = prop_prunes)
+    if(!underPrior){
+      prop_prunes <- prunePCV(vcv.phylo(prop_tree))
+      prop_transformed_contrasts <- updateTransformedContrasts_tree(transformed_traits = curr_transformed_traits, prunes = prop_prunes)
+    }
     log_prop_ratio <- prop_bl_info$log_prop_ratio
     prop_detcov <- curr_detcov
     log_prior_ratio <- 0
@@ -617,10 +649,18 @@ for(i in 2:n_iter){
     n_prop[4] <- n_prop[4] + 1
     which_Rate <- sample(1:n_traits, 1)
     curr_relative_rates <- curr_rates / n_traits
-    prop_relative_rates_info <- betaMove(curr_relative_rates, index = which_Rate, conc = 5)
-    log_prop_ratio <- prop_relative_rates_info$log_prop_ratio
-    log_prior_ratio <- 0
+    if(useSimplexSlideMoves){
+      prop_relative_rates_info <- slideMove(curr_relative_rates[which_Rate], window = 0.05, min = 0, max = 1)
+      prop_relative_rates <- curr_relative_rates
+      prop_relative_rates[which_Rate] <- prop_relative_rates_info$prop
+      prop_relative_rates[-which_Rate] <- prop_relative_rates[-which_Rate] / sum(prop_relative_rates[-which_Rate]) * (1-prop_relative_rates_info$prop)
+      prop_relative_rates_info$prop <- prop_relative_rates
+    } else{
+      prop_relative_rates_info <- betaMove(curr_relative_rates, index = which_Rate, conc = 5)
+    }
+    
     prop_rates <- prop_relative_rates_info$prop * n_traits
+    log_prop_ratio <- prop_relative_rates_info$log_prop_ratio
     
     # prop_change_ratio <- curr_relative_rates / prop_relative_rates_info$prop
     # prop_Li <- updateLi(curr_Li = curr_Li, sd_index = 1:n_traits, change_ratio = prop_change_ratio)
@@ -635,30 +675,65 @@ for(i in 2:n_iter){
     # prop_Li <- solve(t(chol(prop_Rm)))
     # prop_detcov <- det(prop_Rm)
     
-    prop_transformed_traits <- updateTransformedTraits(means, prop_Li)
-    prop_transformed_contrasts <- updateTransformedContrasts_tree(transformed_traits = prop_transformed_traits, prunes = curr_prunes)
+    if(!underPrior){
+      prop_transformed_traits <- updateTransformedTraits(means, prop_Li)
+      prop_transformed_contrasts <- updateTransformedContrasts_tree(transformed_traits = prop_transformed_traits, prunes = curr_prunes)
+    }
     prop_prunes <- curr_prunes
-    log_prior_ratio <- 0
+    log_prior_ratio <- DirichletReg::ddirichlet(x = t(as.matrix(prop_relative_rates_info$prop)), alpha = curr_trait_rates_conc_params, log = T) - 
+                       DirichletReg::ddirichlet(x = t(as.matrix(curr_relative_rates)), alpha = curr_trait_rates_conc_params, log = T)
+    
+    if(is.na(log_prior_ratio)){log_prior_ratio = 0}
     
   }
   
+  if(type_of_move == "rate_reg"){
+    n_prop[5] <- n_prop[5] + 1
+    curr_relative_rates
+    curr_log10_trait_rates_conc_param <- log10(curr_trait_rates_conc_params[1] - trait_rates_conc_param_mean_sd_offset[3])
+    prop_log10_trait_rates_conc_param <- slideMove(curr_log10_trait_rates_conc_param, window = 0.25)$prop
+    log_prop_ratio <- 0
+    prop_trait_rates_conc_params <- rep(10^prop_log10_trait_rates_conc_param + trait_rates_conc_param_mean_sd_offset[3], n_traits)
+    log_prior_ratio <- dnorm(prop_log10_trait_rates_conc_param, mean = trait_rates_conc_param_mean_sd_offset[1], trait_rates_conc_param_mean_sd_offset[2], log = T) - 
+      dnorm(curr_log10_trait_rates_conc_param, mean = trait_rates_conc_param_mean_sd_offset[1], trait_rates_conc_param_mean_sd_offset[2], log = T)
+    if(!only_rate_reg){
+      if(dont_take_rate_dens_in_rate_reg){
+        log_prior_ratio <- log_prior_ratio + DirichletReg::ddirichlet(x = t(as.matrix(curr_relative_rates)), alpha = prop_trait_rates_conc_params, log = T) - 
+        DirichletReg::ddirichlet(x = t(as.matrix(curr_relative_rates)), alpha = curr_trait_rates_conc_params, log = T)
+      }
+    }
+  }
+  
   #compute likelihood ratio
-  prop_ll  <- BM_LL_PRECOMPUTE(transformed_contrasts = prop_transformed_contrasts, prop_prunes, detcov = prop_detcov)
+  if(!underPrior){
+    prop_ll  <- BM_LL_PRECOMPUTE(transformed_contrasts = prop_transformed_contrasts, prop_prunes, detcov = prop_detcov)
+  }
   log_ll_ratio <- prop_ll - curr_ll
   if(is.na(log_ll_ratio)){log_ll_ratio = 0}
+  if(underPrior){
+    log_ll_ratio = 0
+  }
   
   #accept or reject
   log_accept_prob <- log_prop_ratio + log_ll_ratio + log_prior_ratio
   
   if(debug_bugs){
-    log_accept_prob <- -Inf
+    # log_accept_prob <- -Inf
     print(type_of_move)
-    print((c(BM_LL_PRECOMPUTE(transformed_contrasts = prop_transformed_contrasts, prop_prunes, detcov = prop_detcov),
-          BMpruneLLuvtChol(means, sig = diag(sqrt(prop_rates)) %*% R %*% diag(sqrt(prop_rates)), tree = prop_tree))))
+    print(paste0("log prop likelihoods: ", BM_LL_PRECOMPUTE(transformed_contrasts = prop_transformed_contrasts, prop_prunes, detcov = prop_detcov), " ",
+          BMpruneLLuvtChol(means, sig = diag(sqrt(prop_rates)) %*% R %*% diag(sqrt(prop_rates)), tree = prop_tree), " ",
+          BMpruneLLmvt(means, diag(sqrt(prop_rates)) %*% R %*% diag(sqrt(prop_rates)), prop_tree), " ",
+          BMpruneLL_MVN(means = means, tree = prop_tree, rate_matrix = diag(sqrt(prop_rates)) %*% R %*% diag(sqrt(prop_rates)))))
+    print(paste0("log_prop_ratio: ", log_prop_ratio))
+    print(paste0("log_prior_ratio: ", log_prior_ratio))
+    print(paste0("log_ll_ratio: ", log_ll_ratio))
   }
   
   if(log(runif(1, 0, 1)) < log_accept_prob){
-    n_accept[which(type_of_move == c("topology", "BLs", "TL", "rates"))] <- n_accept[which(type_of_move == c("topology", "BLs", "TL", "rates"))] + 1
+    if(debug_bugs){
+      print("ding!")
+    }
+    n_accept[which(type_of_move == c("topology", "BLs", "TL", "rates", "rate_reg"))] <- n_accept[which(type_of_move == c("topology", "BLs", "TL", "rates", "rate_reg"))] + 1
     curr_tree <- prop_tree
     curr_relative_rates <- prop_relative_rates
     curr_rates <- prop_rates
@@ -673,6 +748,7 @@ for(i in 2:n_iter){
     curr_prunes <- prop_prunes
     curr_transformed_contrasts <- prop_transformed_contrasts
     curr_ll <- prop_ll
+    curr_trait_rates_conc_params <- prop_trait_rates_conc_params
   } else {
     prop_tree <- curr_tree
     prop_relative_rates <- curr_relative_rates
@@ -688,6 +764,7 @@ for(i in 2:n_iter){
     prop_prunes <- curr_prunes
     prop_transformed_contrasts <- curr_transformed_contrasts
     prop_ll <- curr_ll
+    prop_trait_rates_conc_params <- curr_trait_rates_conc_params
   }
   
   #record given thinning 
@@ -695,7 +772,7 @@ for(i in 2:n_iter){
     trees[[i/thin]] <- curr_tree
     rates[i/thin,] <- curr_rates
     lls[i/thin] <- curr_ll
-    
+    rate_regs[i/thin] <- curr_trait_rates_conc_params[1]
   }
       
 }
@@ -704,152 +781,38 @@ for(i in 2:n_iter){
 trees <- trees[(burnin_prop*n_out):n_out]
 rates <- rates[(burnin_prop*n_out):n_out,]
 lls <- lls[(burnin_prop*n_out):n_out]
+rate_regs <- rate_regs[(burnin_prop*n_out):n_out]
 
-output_files <- list.files("output") 
-curr_index <- length(output_files[grep(output_files, pattern = paste0("fixCorrs_infRates_allTraits_trees", extraFilename))])
-write.tree(phy = trees, file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", curr_index, ".trees"))
-write.table(rates, file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", curr_index, ".txt"))
-write.table(lls, file = paste0("output/fixCorrs_infRates_allTraits_lls", extraFilename, "_", curr_index, ".txt"))
 
 n_accept / n_prop 
 
 plot(sapply(1:length(trees), function(x) sum(trees[[x]]$edge.length)), type = "l")
-plot(rates[,2], type = "l")
+plot(rates[,1], type = "l")
 plot(lls, type = "l")
 apply(rates, 2, mean)
-plot(midpoint(maxCladeCred(trees)))
+plot(maxCladeCred(trees))
+RF.dist(maxCladeCred(trees), tree, normalize = T)
 effectiveSize(rates)
 effectiveSize(lls)
-effectiveSize(sapply(1:length(trees), function(x) sum(trees[[x]]$edge.length)))
-effectiveSize(sapply(1:length(trees), function(x) RF.dist(trees[[x]], trees[[1]], normalize = T)))
 
+if(underPrior){
+  #tree lengths
+  hist(log10(sapply(1:length(trees), function(x) sum(trees[[x]]$edge.length))), probability = T, col = rgb(1,0,0,0.5))
+  hist(rnorm(n = 1E5, mean = TL_log_prior[1], sd = TL_log_prior[2]), add = T, probability = T, col = rgb(0,1,0,0.5))
+  
+  #topologies
+  hist(sapply(1:2000, function(x) RF.dist(tree1 = trees[[sample(1:1700, 1)]], tree2 = trees[[sample(1:1700, 1)]])),  probability = T, col = rgb(1,0,0,0.5))
+  hist(sapply(1:2000, function(x) RF.dist(tree1 = rtree(nTaxa), tree2 = rtree(nTaxa))), probability = T, col = rgb(0,1,0,0.5), add = T)
+  
+  #rates tuning param
+  hist(log10(rate_regs - trait_rates_conc_param_mean_sd_offset[3]),  probability = T, col = rgb(1,0,0,0.5), breaks = 10)
+  hist(rnorm(1E5, mean = trait_rates_conc_param_mean_sd_offset[1], sd = trait_rates_conc_param_mean_sd_offset[2]),  probability = T, col = rgb(0,1,0,0.5), add = T)
+  
+  #bl_proportions
+  hist(t(sapply(1:length(trees), function(x) (trees[[x]]$edge.length) / sum(trees[[x]]$edge.length))),  probability = T, col = rgb(1,0,0,0.5), breaks = 10)
+  hist(rdirichlet(n = 1E5, alpha = bls_conc_params),  probability = T, col = rgb(0,1,0,0.5), add = T, breaks = 20)
+  
+  #rates
+  hist(rates / n_traits,  probability = T, col = rgb(1,0,0,0.5))
+  hist(rdirichlet(1E5, alpha = rep(sample(rate_regs, 1), n_traits)),  probability = T, col = rgb(0,1,0,0.5), add = T)
 }
-
-# read in all data for comparison
-extraFilename <- "_noPanAsian"
-
-trees0 <- read.tree(file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", 0, ".trees"))
-trees1 <- read.tree(file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", 1, ".trees"))
-trees2 <- read.tree(file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", 2, ".trees"))
-trees3 <- read.tree(file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", 3, ".trees"))
-
-lls0 <- c(read.table(file = paste0("output/fixCorrs_infRates_allTraits_lls", extraFilename, "_", 0, ".txt")))
-lls1 <- c(read.table(file = paste0("output/fixCorrs_infRates_allTraits_lls", extraFilename, "_", 1, ".txt")))
-lls2 <- c(read.table(file = paste0("output/fixCorrs_infRates_allTraits_lls", extraFilename, "_", 2, ".txt")))
-lls3 <- c(read.table(file = paste0("output/fixCorrs_infRates_allTraits_lls", extraFilename, "_", 3, ".txt")))
-
-plot(unlist(c(lls1, lls2, lls3)), type = "l")
-effectiveSize(unlist(c(lls1, lls2, lls3)))
-
-all_trees <- c(trees1, trees2, trees3)
-effectiveSize(sapply(1:length(all_trees), function(x) sum(all_trees[[x]]$edge.length)))
-
-trait_names <- c(as.character(read.table("trait_names.txt")$x))
-trait_names <- gsub("PM", "P", trait_names)
-tooth_indices_position <- unique(sapply(1:length(trait_names), function(x) strsplit(trait_names[[x]], split = "\\.")[[1]][1]))
-tooth_indices_position_index <- sapply(1:length(trait_names), function(x) which(strsplit(trait_names[[x]], split = "\\.")[[1]][1] == tooth_indices_position))
-tooth_indices_subtype <- unique(sapply(1:length(trait_names), function(x) substr(strsplit(trait_names[[x]], split = "\\.")[[1]][1], start = 1, stop = 2)))
-tooth_indices_subtype_index <- sapply(1:length(trait_names), function(x) which(substr(strsplit(trait_names[[x]], split = "\\.")[[1]][1], start = 1, stop = 2) == tooth_indices_subtype))
-tooth_indices_type <- c("I", "C", "P", "M")
-tooth_indices_type_index <- sapply(1:length(trait_names), function(x) which(sapply(tooth_indices_type, function(y)
-  length(grep(pattern = y, x = strsplit(trait_names[[x]], split = "\\.")[[1]][1])) == 1)))
-trait_indices <- unique(sapply(1:length(trait_names), function(x) strsplit(trait_names[[x]], split = "\\.")[[1]][2]))
-trait_indices_index <- sapply(1:length(trait_names), function(x) which(strsplit(trait_names[[x]], split = "\\.")[[1]][2] == trait_indices))
-
-tooth_type_corrs <- sapply(1:length(unique(tooth_indices_type_index)), function(index)
-  R[tooth_indices_type_index == index, tooth_indices_type_index == index][upper.tri(R[tooth_indices_type_index == index, tooth_indices_type_index == index])])
-tooth_subtype_corrs <- sapply(1:length(unique(tooth_indices_subtype_index)), function(index)
-  R[tooth_indices_subtype_index == index, tooth_indices_subtype_index == index][upper.tri(R[tooth_indices_subtype_index == index, tooth_indices_subtype_index == index])])
-tooth_position_corrs <- sapply(1:length(unique(tooth_indices_position_index)), function(index)
-  R[tooth_indices_position_index == index, tooth_indices_position_index == index][upper.tri(R[tooth_indices_position_index == index, tooth_indices_position_index == index])])
-trait_corrs <- sapply(1:length(unique(trait_indices_index)), function(index)
-  R[trait_indices_index == index, trait_indices_index == index][upper.tri(R[trait_indices_index == index, trait_indices_index == index])])
-
-#strength of correlations across teeth & traits
-rownames(R) <- colnames(R) <- trait_names
-heatmap(R)
-hist(unlist(trait_corrs), col = rgb(1,0,0,0.4), xlim = c(-1,1), ylim = c(0,3.5), freq = F) #higher correlations within traits
-hist(unlist(tooth_position_corrs), add = T, col = rgb(0,1,0,0.4), freq = F, breaks = 20)
-hist(unlist(tooth_subtype_corrs), add = T, col = rgb(0,0,1,0.4), freq = F, breaks = 20)
-hist(unlist(tooth_type_corrs), add = T, col = rgb(0,1,1,0.4), freq = F, breaks = 20)
-hist(R[upper.tri(R)], add  = T, col = rgb(1,1,1,0.2), freq = F, breaks = 20)
-
-rates0 <- (read.table(file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", 0, ".txt")))
-rates1 <- (read.table(file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", 1, ".txt")))
-rates2 <- (read.table(file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", 2, ".txt")))
-rates3 <- (read.table(file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", 3, ".txt")))
-
-all_rates <- do.call(rbind, list(rates1, rates2, rates3))
-rate_means <- apply(all_rates, 2, mean)
-effectiveSize(all_rates)
-plot(sort(rate_means), type = "l")
-makeTransparent<-function(someColor, alpha=100){
-  newColor<-col2rgb(someColor)
-  apply(newColor, 2, function(curcoldata){rgb(red=curcoldata[1], green=curcoldata[2],
-                                              blue=curcoldata[3],alpha=alpha, maxColorValue=255)})
-}
-for(index in 1:length(unique(trait_indices_index))){
-  hist(rate_means[trait_indices_index == index], add = ifelse(index == 1, F, T), xlim = c(0,5), freq = F, ylim = c(0, 10), col = makeTransparent(index, 100))
-}
-for(index in 1:length(unique(tooth_indices_type_index))){
-  hist(rate_means[tooth_indices_type_index == index], add = ifelse(index == 1, F, T), xlim = c(0,5), freq = F, ylim = c(0, 3), col = makeTransparent(index, 100))
-}
-for(index in 1:length(unique(tooth_indices_position_index))){
-  hist(rate_means[tooth_indices_position_index == index], add = ifelse(index == 1, F, T), xlim = c(0,5), freq = F, ylim = c(0, 3), col = makeTransparent(index, 100))
-}
-for(index in 1:length(unique(tooth_indices_subtype_index))){
-  hist(rate_means[tooth_indices_subtype_index == index], add = ifelse(index == 1, F, T), xlim = c(0,5), freq = F, ylim = c(0, 3), col = makeTransparent(index, 100))
-}
-
-
-
-bip_probs0 <- prop.part.df(trees0)
-bip_probs1 <- prop.part.df(trees1)
-bip_probs2 <- prop.part.df(trees2)
-bip_probs3 <- prop.part.df(trees3)
-
-bip_probs0$cladeNames <- sapply(1:length(bip_probs0$cladeNames), function(clade)
-  sapply(1:length(strsplit(bip_probs0$cladeNames[[clade]], split = "-")), function(name)
-    paste0(strsplit(bip_probs0$cladeNames[[clade]], split = "-")[[name]], collapse = "")))
-
-bip_probs1$cladeNames <- sapply(1:length(bip_probs1$cladeNames), function(clade)
-  sapply(1:length(strsplit(bip_probs1$cladeNames[[clade]], split = "-")), function(name)
-    paste0(strsplit(bip_probs1$cladeNames[[clade]], split = "-")[[name]], collapse = "")))
-
-bip_probs2$cladeNames <- sapply(1:length(bip_probs2$cladeNames), function(clade)
-  sapply(1:length(strsplit(bip_probs2$cladeNames[[clade]], split = "-")), function(name)
-    paste0(strsplit(bip_probs2$cladeNames[[clade]], split = "-")[[name]], collapse = "")))
-
-bip_probs3$cladeNames <- sapply(1:length(bip_probs3$cladeNames), function(clade)
-  sapply(1:length(strsplit(bip_probs3$cladeNames[[clade]], split = "-")), function(name)
-    paste0(strsplit(bip_probs3$cladeNames[[clade]], split = "-")[[name]], collapse = "")))
-
-
-tipLabs <- c("NEAND",  "AUSNG", "ASIAN",  "AMER",   "SSAF",   "EUR")
-# tipLabs <- c("NEAND",  "AUSNG", "WAS", "NEAS",  "AMER",   "SSAF",   "EUR", "SAS")
-# tipLabs <- c("NEAND",  "AUSNG", "SWAS", "NEAS",  "AMER",   "SSAF",   "EUR")
-plot(compareTrees(bip_probs0, bip_probs1, tipLabs = tipLabs))
-plot(compareTrees(bip_probs1, bip_probs2, tipLabs = tipLabs))
-plot(compareTrees(bip_probs1, bip_probs3, tipLabs = tipLabs))
-plot(compareTrees(bip_probs2, bip_probs3, tipLabs = tipLabs))
-
-
-plot(midpoint(maxCladeCred(all_trees)))
-nodelabels(round(internal_nodes_probs(midpoint(maxCladeCred(all_trees)), unroot(all_trees)) * 100, 0), frame = "circle", bg = "white", cex = 1.25)
-gctree <- greedyCT(all_trees)
-plot(unroot(gctree))
-matching_trees <- which(sapply(1:length(all_trees), function(tree) RF.dist(all_trees[[tree]], gctree)) == 0)
-plot(midpoint(maxCladeCred(all_trees[matching_trees])))
-nodelabels(round(internal_nodes_probs(midpoint(maxCladeCred(all_trees)), unroot(all_trees)) * 100, 0), frame = "circle", bg = "white", cex = 1.25)
-mapTree <- MAP_tree(all_trees[seq(1, 1E4, 5)], n_trees_to_return = 1)
-plot(midpoint(mapTree$map_tree))
-mapTrees <- MAP_tree(trees = all_trees[seq(1, 1E4, 5)], return_posteriorMean_BLs = T, n_trees_to_return = "all")
-cumulative_credibleSet_probs <- cumsum(sapply(1:length(mapTrees), function(x) mapTrees[[x]]$prob))
-plot(credibleSet_probs, type = "l", ylab = "size of credible set", xlab = "number of trees", xlim = c(1, length(mapTrees)))
-layout(matrix(c(1,2,3,4), 2, 2, byrow = T))
-par(mar = c(2,2,2,2))
-for(i in 1:4){
-  plot.phylo(x = midpoint(mapTrees[[i]]$tree[[1]]), main = paste0("probability = ", round(mapTrees[[i]]$prob, 2)))
-}
-
-

@@ -1069,13 +1069,13 @@ approxMultinomialCondMCMC <- function(probs, obs_counts, total_count, min_ess = 
 
 
 #first let's resimulate data
-nrounds <- 10
+nrounds <- 12
 nTaxa <- 6
-d_traits <- 40
+d_traits <- 10
 useIdentity <- F
 n_sub_matrices <- 1
-n_indiv <- sample(50:100, nTaxa, replace = T)
-n_thresholds <- sample(2:6, d_traits, T) #for variable numbers of thresholds, just need to buffer with 'Inf's on the right
+n_indiv <- sample(15:100, nTaxa, replace = T)
+n_thresholds <- sample(1:6, d_traits, T) #for variable numbers of thresholds, just need to buffer with 'Inf's on the right
 weighPCV <- F
 MCAR <- F #missing data is coded with state '9'
 ignoreImputedData <- F
@@ -1090,7 +1090,7 @@ updateAllAtOnce <- T #impute each missing value as you iterate through them, or 
 ignoreOtherImputedStates <- T
 use_conditional_probs_for_observed_data <- F
 use_conditional_probs_for_unobserved_data <- T
-impose_constraints <- T #should we impose constraints on the missing data at all?
+impose_constraints <- F #should we impose constraints on the missing data at all?
 constraint_probs <-  c(0.1,0.1,0.1,0.7) # for c("+", "-", "adj", "NA")
 use_imputed_data_for_corrs <- F
 useUPGMA <- F

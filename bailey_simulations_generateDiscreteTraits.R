@@ -22,6 +22,8 @@ library(mvMORPH)
 library(tictoc)
 library(mvtnorm)
 
+lotsaDATA <- F
+
 logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may help with speedup
   lognormal_prior_on_beta_shape_params_for_corrs <- c(0,1) #let's not infer the shape of the beta distribution,
   # but just fix it to the appropriate beta of the marginal LKJ -- ehhh this is too informative
@@ -1508,44 +1510,49 @@ estimate_root_brownian_bridge <- function(tree, means, rate_matrix){
 }
 
 #simulate trees and data
-nTaxa <- 6
-d_traits <- n_traits <- 114
-n_indiv_emp <- c(119, 51, 84, 97, 135, 198); n_indiv_emp_popmatch <- c("NEAND", "AUS-NG", "EUR", "ASIAN", "SSAF", "AMER")
-n_thresholds <- c(5, 6, 4, 6, 7, 5, 3, 6, 4, 3, 6, 3, 4, 2, 2, 2, 4, 3, 3, 2, 4, 2, 2, 2, 1, 
-                  4, 3, 1, 8, 5, 5, 7, 4, 3, 3, 3, 3, 5, 5, 5, 7, 4, 3, 3, 5, 3, 5, 5, 5, 7, 
-                  6, 4, 2, 3, 1, 2, 4, 3, 3, 3, 3, 2, 5, 2, 3, 1, 2, 4, 2, 4, 2, 3, 3, 3, 2, 
-                  3, 3, 4, 2, 4, 4, 2, 3, 6, 5, 5, 4, 4, 5, 3, 2, 3, 6, 5, 5, 4, 4, 4, 3, 2, 
-                  3, 7, 5, 5, 4, 4, 4, 3, 4, 3, 3, 3, 3, 3)
+d_traits <- n_traits <- 118
+n_indiv_emp <- c(119, 51, 84, 40, 40, 17, 135, 198); n_indiv_emp_popmatch <- c("NEAND", "AUS-NG", "EUR", "WAS", "SAS", "NEAS", "SSAF", "AMER")
+nTaxa <- length(n_indiv_emp)
+if(lotsaDATA){
+  n_indiv_emp <- rep(2 * max(n_indiv_emp), length(n_indiv_emp))
+}
+n_thresholds <- c(5, 6, 4, 6, 7, 5, 3, 6, 4, 3, 6, 3, 4, 2, 2, 2, 4, 3, 3, 2, 4, 2, 2, 2, 1, 4, 3, 1, 8, 5, 5, 7, 4, 3, 3, 3, 3, 5, 5, 5, 7, 4, 3, 3, 5, 3, 5, 5, 5, 7, 6, 4, 2, 3, 3, 3, 1, 2, 4, 3, 3, 3, 3, 2, 5, 2, 3, 2, 1, 2, 4, 2, 4, 2, 3, 3, 3, 2, 3, 3, 4, 2, 4, 4, 2, 3, 6, 5, 5, 4, 4, 5, 3, 2, 3, 6, 5, 5, 4, 4, 4, 6, 3, 2, 3, 7, 5, 5, 4, 4, 4, 3, 4, 3, 3, 3, 3, 3)
 
 impose_constraints <- T #should we impose constraints on the missing data at all?
-constraint_probs <-  c(0.001,0.001,0.0027,0.9953) # for c("+", "-", "adj", "NA")
+constraint_probs <-  c(0.0046,0.0002,0.0052,0.99) # for c("+", "-", "adj", "NA")
 
+MCAR <- F
 missing_base_prob <- 0.69
+if(lotsaDATA){
+  missing_base_prob <- 0
+}
 missing_base_state <- 2
 per_state_logit_incr <- 0.5
 logit_scale_pts <- -(cumsum(rep(per_state_logit_incr, max(n_thresholds + 1))) - missing_base_state * per_state_logit_incr - logit(missing_base_prob))
+invlogit(logit_scale_pts)
 write.table(invlogit(logit_scale_pts), "simulation_state_dependent_missing_probs.txt")
 
 #read in empirical parameterization
-extraFilename <- ""
+extraFilename <- "_noPanAsian"
+trees0 <- read.tree(file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", 1, ".trees"))
 trees1 <- read.tree(file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", 1, ".trees"))
 trees2 <- read.tree(file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", 2, ".trees"))
 trees3 <- read.tree(file = paste0("output/fixCorrs_infRates_allTraits_trees", extraFilename, "_", 3, ".trees"))
 
 all_trees <- c(trees1, trees2, trees3)
 
+rates0 <- (read.table(file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", 1, ".txt")))
 rates1 <- (read.table(file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", 1, ".txt")))
 rates2 <- (read.table(file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", 2, ".txt")))
 rates3 <- (read.table(file = paste0("output/fixCorrs_infRates_allTraits_rates", extraFilename, "_", 3, ".txt")))
 
 all_rates <- do.call(rbind, list(rates1, rates2, rates3))
 
-R <- as.matrix(read.table(paste0("output/nearPD_Corr", extraFilename, ".txt")))
+corrMat <- as.matrix(read.table(paste0("output/nearPD_Corr", extraFilename, ".txt")))
 weight <- 0.02
-R <- (R + weight*diag(n_traits)) / (1 + weight)
-R <- diag(sqrt(rates)) %*% R %*% diag(sqrt(rates))
+corrMat <- (corrMat + weight*diag(n_traits)) / (1 + weight)
 
-thresholds <- as.matrix(read.table("output/mean_of_thresholds_collapseAsia.txt"))
+thresholds <- as.matrix(read.table(paste0("output/mean_of_thresholds", extraFilename, ".txt")))
 threshold_spacings <- t(apply(thresholds, 1, diff))
 threshold_spacings[is.na(threshold_spacings)] <- Inf
 thresholds <- cbind(rep(0, d_traits), threshold_spacings)
@@ -1556,14 +1563,17 @@ threshold_diffs[is.na(threshold_diffs)] <- Inf
 inferred_empirical_means <- as.matrix(read.table(paste0("output/mean_of_means", extraFilename, ".txt")))
 
 ### now comes the sampling simulation part ###
-nreps <- 500
-
-for(rep_i in 1:nreps){
+nreps <- 1:500
+if(lotsaDATA){
+  nreps <- 501:1000
+}
+for(rep_i in nreps){
   cat(paste0(rep_i, " "))
   
   samp_index <- sample(1:length(all_trees), 1)
   tree <- midpoint(all_trees[samp_index][[1]])
   rates <- all_rates[samp_index,]
+  R <- diag(sqrt(rates)) %*% corrMat %*% diag(sqrt(rates))
   
   write.tree(tree, file = paste0("trees/tree_", rep_i))
   write.table(rates, file = paste0("rates/rates_", rep_i))
@@ -1580,7 +1590,7 @@ for(rep_i in 1:nreps){
   n_indiv <- n_indiv_emp[match(rownames(traits), n_indiv_emp_popmatch)]
   traits_indiv <- lapply(1:nTaxa, function(tip) rmvnorm(n = n_indiv[tip], mean = traits[tip,], sigma = cov2cor(R))); names(traits_indiv) <- rownames(traits)
   traits_indiv_discr <- lapply(1:nTaxa, function(tip) t(sapply(1:n_indiv[tip], function(indiv) sapply(1:d_traits, function(trait) sum(traits_indiv[[tip]][indiv,trait] - thresholds[trait,] > 0))))); 
-  names(traits_indiv_discr) <- names(traits_indiv) 
+  names(traits_indiv_discr) <- names(traits_indiv)
   
   #simulate missing data
   traits_indiv_discr_true <- traits_indiv_discr

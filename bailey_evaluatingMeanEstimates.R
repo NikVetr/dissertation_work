@@ -1,11 +1,27 @@
 setwd("/Volumes/1TB/Bailey/")
 
+noPanAsian <- T
+SWAsian <- F
+noNEAsian <- F
+noSAsian <- F
+runAnalysis <- F
+
+extraFilename <- ""
+if(noPanAsian){extraFilename <- "_noPanAsian"}
+if(SWAsian){extraFilename <- "_SWAsian"}
+if(noNEAsian){extraFilename <- "_noNEAsian"}
+if(noSAsian){extraFilename <- "_noSAsian"}
+if(noSAsian & noNEAsian){extraFilename <- "_noNEAsian_noSAsian"}
+
 # data_dir <- "data_joint_thresh_means/"
 data_dir <- "data/"
 data_files <- list.files(data_dir)
-data_files <- data_files[grep(data_files, pattern =  "combineSWasian_")]
-data_files <- data_files[grep(data_files, pattern =  "noPanAsian_NJ")]
-data_files <- data_files[grep(data_files, pattern =  "params_NJ_Star")]
+# data_files <- data_files[grep(data_files, pattern =  "params_NJ_Star")]
+if(SWAsian){data_files <- data_files[grep(data_files, pattern =  "combineSWasian_")]}
+if(noPanAsian){data_files <- data_files[grep(data_files, pattern =  "noPanAsian_NJ")]}
+if(noSAsian & noNEAsian){data_files <- data_files[grep(data_files, pattern =  "noNEAsian_noSAsian")][5:8]}
+if(noNEAsian & !noSAsian){data_files <- data_files[grep(data_files, pattern =  "noNEAsian_NJ")]}
+if(noSAsian & !noNEAsian){data_files <- data_files[grep(data_files, pattern =  "noPanAsian_noSAsian")]}
 
 data <- lapply(1:length(data_files), function(x) "placeholder")
 for(i in 1:length(data)){
@@ -52,7 +68,7 @@ for(i in 2:length(data)){
   mean_of_thresholds <- mean_of_thresholds + data[[i]]$threshold_mat
 }
 mean_of_thresholds <- mean_of_thresholds / length(data)
-write.table(mean_of_thresholds, file = "output/mean_of_thresholds_collapseAsia.txt")
+write.table(mean_of_thresholds, file = paste0("output/mean_of_thresholds", extraFilename, ".txt"))
 
 
 mean_of_cors <- data[[1]]$cor
@@ -114,8 +130,8 @@ es$vectors[,1:n_ev] %*% diag(es$values[1:n_ev]) %*% t(es$vectors[,1:n_ev]) - mea
 
 nearPD_Cor <- as.matrix(Matrix::nearPD(mean_of_cors, corr = T)$mat)
 det(nearPD_Cor)
-write.table(nearPD_Cor, file = "output/nearPD_Corr_SWAsian.txt")
-write.table(mean_of_means, file = "output/mean_of_means_SWAsian.txt")
+write.table(nearPD_Cor, file = paste0("output/nearPD_Corr", extraFilename, ".txt"))
+write.table(mean_of_means, file = paste0("output/mean_of_means", extraFilename, ".txt"))
 
 mahDistMat <- mahaMatrix(mean_of_means, as.matrix(Matrix::nearPD(mean_of_cors, corr = T)$mat), squared = F)
 njTree <- ape::nj(mahDistMat)

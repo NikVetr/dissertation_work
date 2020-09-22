@@ -40,7 +40,7 @@ pbivnorm_infs <- function(upper1, upper2, rhos){
   return(results)
 } #checks for buggy edge cases and corrects
 
-compareCompVsFull <- function(dimr, cor = NA, meanl = -1, meanu = 1, lower = NA, upper = NA, uniformWindow = F, unifL = c(-1,0), unifU = c(0,1), repError = F){
+compareCompVsFull <- function(dimr, cor = NA, meanl = -1, meanu = 1, lower = NA, upper = NA, uniformWindow = F, unifL = c(-1,0), unifU = c(0,1), repError = F, applyDetCorr = F){
   if(all(is.na(cor))){
     x <- rlkj(dimr)
   } else {
@@ -67,7 +67,8 @@ compareCompVsFull <- function(dimr, cor = NA, meanl = -1, meanu = 1, lower = NA,
   }
   
   trueprob <- (pmvnorm(lower = lower, upper = upper, corr = x, algorithm = GenzBretz()))
-  errorMag <- attr(trueprob, "error") / trueprob[1]
+  absError <- attr(trueprob, "error")
+  errorMag <- absError / trueprob[1]
   trueprob <- log(trueprob[1])
   
   uppers <- matrix(0, choose(dimr, 2), 2)
@@ -89,15 +90,21 @@ compareCompVsFull <- function(dimr, cor = NA, meanl = -1, meanu = 1, lower = NA,
     pbivnorm_infs(lowers[,1], lowers[,2], rhos)
   
   probs[probs < 0] <- 0 #get rid of floating point errors
+  if(applyDetCorr){
+    probs <- probs / sqrt(detbivcor(x[upper.tri(x)]))
+  }
   prob1 <- mean(log(probs)) #geometric mean
   # prob2 <- log(1 / (mean(1 / (probs)))) #harmonic mean
   # prob3 <- log(mean(probs)) #arithmetic mean
   prob <- prob1
-  prob <- prob * dimr / 2
+  prob <- prob * (dimr) / 2
+  if(applyDetCorr){
+    prob <- prob + 0.5 * log(det(x))
+  }
   if(!repError){
     return(c(trueprob, prob))
   } else if(repError){
-    return(c(trueprob, prob, errorMag))
+    return(c(trueprob, prob, errorMag, absError))
   }
 }
 
@@ -112,9 +119,22 @@ r2_1to1 <- function(var1, var2, uplow = F){
   }
 }
 
-dimr <- 10
-nrep <- 100
-comparingTrueVsComp <- t(replicate(nrep, compareCompVsFull(dimr, cor = NA, lower = runif(dimr, -0.5, 0.5), upper = runif(dimr, 0.5, 1.5))))
+
+# R <- rlkj(10)
+# (det(R))  / prod(detbivcor(R[upper.tri(R)]))
+
+dimr <- 118
+nrep <- 1000
+error_threshold <- 10000
+# comparingTrueVsComp <- t(replicate(nrep, compareCompVsFull(dimr, cor = NA, lower = runif(dimr, -1, 1), upper = runif(dimr, -1, 1), repError = T, applyDetCorr = F)))
+comparingTrueVsComp <- t(replicate(nrep, compareCompVsFull(dimr, cor = diag(dimr) + 0.9 - diag(dimr)*0.9, lower = runif(dimr, -1, 1), upper = runif(dimr, -1, 1), repError = T, applyDetCorr = F)))
+comparingTrueVsComp_orig <- comparingTrueVsComp
+if(any(comparingTrueVsComp[,3] > error_threshold)){
+  comparingTrueVsComp <- comparingTrueVsComp[-which(comparingTrueVsComp[,3] > error_threshold),]
+}
+if(any(is.na(comparingTrueVsComp[,3]))){
+  comparingTrueVsComp <- comparingTrueVsComp[-which(is.na(comparingTrueVsComp[,3])),]
+}
 # comparingTrueVsComp[,2] <- comparingTrueVsComp[,2] / dimr
 # lm(comparingTrueVsComp[,1] ~ comparingTrueVsComp[,2])
 cor(comparingTrueVsComp[,1], comparingTrueVsComp[,2])^2
@@ -126,6 +146,10 @@ plot(comparingTrueVsComp[,1:2], xlab = "\"full\" multivariate normal integral", 
 title(paste0("dimension = ", dimr, ", r = ", round(cor(comparingTrueVsComp)[1,2], 3)))
 abline(0, 1, lwd = 2, col = 2)
 legend(x = "topleft", legend = "1-to-1 line", col = 2, lwd = 2, lty = 1)
+for(i in 1:nrow(comparingTrueVsComp)){
+  segments(y0 = comparingTrueVsComp[i,2], y1 = comparingTrueVsComp[i,2], 
+           x0 = log(exp(comparingTrueVsComp[i,1] - comparingTrueVsComp[i,4])), x1 = log(exp(comparingTrueVsComp[i,1] + comparingTrueVsComp[i,4])))
+}
 
 
 ##############################
