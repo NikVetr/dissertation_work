@@ -279,7 +279,7 @@ for(i in 2:100){
                     rexp(length(compTrees[[i]][,2]), rate = 50) * compTrees[[i]][,2], 
          col = rgb(0, 0, 0, 0.05), cex = 5, pch = 16)
 }
-points(comparison_mvBM[,1], comparison_mvBM[,2] + 1/3, col = rgb(139/255, 0, 0, 0.75), cex = 5, pch = 1, lwd = 3)
+points(as.numeric(comparison_mvBM[,1]), as.numeric(comparison_mvBM[,2]) + 1/3, col = rgb(139/255, 0, 0, 0.75), cex = 5, pch = 1, lwd = 3)
 box(lwd=3.25)
 title(xlab = "mvBM Bayesian output", cex.lab = 5, line = 7.5)
 title(ylab = "true, data-generating tree", cex.lab = 5, line = 7)
@@ -317,8 +317,8 @@ box(lwd = 3.25)
 box(which = "figure", lty = 5)
 
 
-highprobs <- discretizeContData(comparison_mvBM[comparison_mvBM[,2] > 0.5,1])
-lowprobs <- discretizeContData(comparison_mvBM[comparison_mvBM[,2] < 0.5,1])
+highprobs <- discretizeContData(as.numeric(comparison_mvBM[comparison_mvBM[,2] > 0.5,1]))
+lowprobs <- discretizeContData(as.numeric(comparison_mvBM[comparison_mvBM[,2] < 0.5,1]))
 width = 0.05
 for(i in 1:ncol(highprobs)){
   rect(xleft = highprobs[2,i] - width/2, xright = highprobs[2,i] + width/2, ybottom = 0, ytop = highprobs[1,i] / 5,

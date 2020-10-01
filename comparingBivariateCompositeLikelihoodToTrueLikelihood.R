@@ -1,3 +1,5 @@
+setwd("/Volumes/1TB/Bailey/")
+
 library(mvtnorm)
 library(pbivnorm)
 
@@ -126,8 +128,8 @@ r2_1to1 <- function(var1, var2, uplow = F){
 dimr <- 118
 nrep <- 1000
 error_threshold <- 10000
-# comparingTrueVsComp <- t(replicate(nrep, compareCompVsFull(dimr, cor = NA, lower = runif(dimr, -1, 1), upper = runif(dimr, -1, 1), repError = T, applyDetCorr = F)))
-comparingTrueVsComp <- t(replicate(nrep, compareCompVsFull(dimr, cor = diag(dimr) + 0.9 - diag(dimr)*0.9, lower = runif(dimr, -1, 1), upper = runif(dimr, -1, 1), repError = T, applyDetCorr = F)))
+comparingTrueVsComp <- t(replicate(nrep, compareCompVsFull(dimr, cor = NA, lower = runif(dimr, -1, 1), upper = runif(dimr, -1, 1), repError = T, applyDetCorr = F)))
+# comparingTrueVsComp <- t(replicate(nrep, compareCompVsFull(dimr, cor = diag(dimr) + 0.9 - diag(dimr)*0.9, lower = runif(dimr, -1, 1), upper = runif(dimr, -1, 1), repError = T, applyDetCorr = F)))
 comparingTrueVsComp_orig <- comparingTrueVsComp
 if(any(comparingTrueVsComp[,3] > error_threshold)){
   comparingTrueVsComp <- comparingTrueVsComp[-which(comparingTrueVsComp[,3] > error_threshold),]
@@ -155,6 +157,98 @@ for(i in 1:nrow(comparingTrueVsComp)){
 ##############################
 #### making a nice figure ####
 ##############################
+load(file = "comparingTrueVsComp_118d0.9r ")
+comparingTrueVsComp09r <- comparingTrueVsComp  
+load(file = "comparingTrueVsComp_118dLKJr")
+comparingTrueVsCompLKJr <- comparingTrueVsComp  
+
+fig_label <- function(text, region="figure", pos="topleft", cex=NULL, shrinkX = 1, shrinkY = 1, ...) {
+  
+  region <- match.arg(region, c("figure", "plot", "device"))
+  pos <- match.arg(pos, c("topleft", "top", "topright", 
+                          "left", "center", "right", 
+                          "bottomleft", "bottom", "bottomright"))
+  
+  if(region %in% c("figure", "device")) {
+    ds <- dev.size("in")
+    # xy coordinates of device corners in user coordinates
+    x <- grconvertX(c(0, ds[1]), from="in", to="user")
+    y <- grconvertY(c(0, ds[2]), from="in", to="user")
+    
+    # fragment of the device we use to plot
+    if(region == "figure") {
+      # account for the fragment of the device that 
+      # the figure is using
+      fig <- par("fig")
+      dx <- (x[2] - x[1])
+      dy <- (y[2] - y[1])
+      x <- x[1] + dx * fig[1:2]
+      y <- y[1] + dy * fig[3:4]
+    } 
+  }
+  
+  # much simpler if in plotting region
+  if(region == "plot") {
+    u <- par("usr")
+    x <- u[1:2]
+    y <- u[3:4]
+  }
+  
+  sw <- strwidth(text, cex=cex) * 60/100
+  sh <- strheight(text, cex=cex) * 60/100
+  
+  x1 <- switch(pos,
+               topleft     =x[1] + sw, 
+               left        =x[1] + sw,
+               bottomleft  =x[1] + sw,
+               top         =(x[1] + x[2])/2,
+               center      =(x[1] + x[2])/2,
+               bottom      =(x[1] + x[2])/2,
+               topright    =x[2] - sw,
+               right       =x[2] - sw,
+               bottomright =x[2] - sw)
+  
+  y1 <- switch(pos,
+               topleft     =y[2] - sh,
+               top         =y[2] - sh,
+               topright    =y[2] - sh,
+               left        =(y[1] + y[2])/2,
+               center      =(y[1] + y[2])/2,
+               right       =(y[1] + y[2])/2,
+               bottomleft  =y[1] + sh,
+               bottom      =y[1] + sh,
+               bottomright =y[1] + sh)
+  
+  old.par <- par(xpd=NA)
+  on.exit(par(old.par))
+  
+  text(x1*shrinkX, y1*shrinkY, text, cex=cex, ...)
+  return(invisible(c(x,y)))
+}
+
+#figure 4.2
+grDevices::cairo_pdf(filename = "/Volumes/macOS/Users/nikolai/dissertation/figures/chpt4_figure2.pdf", width = 1500 / 72, height = 750 / 72)
+par(mfrow = c(1,2), mar = c(5,7,3,1))
+plot(comparingTrueVsCompLKJr[,1:2], xlab = "\"full\" multivariate normal integral", ylab = "composite integral obtained from \nall pairwise bivariate integrals",
+     xlim = c(-350, -150), cex.axis = 1.5, pch = 16, col = rgb(0,0,0,0.5), cex = 2.5, cex.lab = 2)
+title(main =  latex2exp::TeX("Approximate Integral Comparison: LKJ($\\eta$ = 1) Correlations"), cex.main = 2)
+# text(paste0("dimension = 118, r = ", round(cor(comparingTrueVsCompLKJr)[1,2], 3)), x = -319, y = -177, cex = 1.5)
+fig_label(paste0("dimension = 118, r = ", round(cor(comparingTrueVsCompLKJr)[1,2], 3)), cex = 1.5, region = "plot", shrinkX = 1.01, shrinkY = 1.005)
+abline(0, 1, lwd = 3, col = 2)
+legend(x = "bottomright", legend = "1-to-1 line", col = 2, lwd = 3, lty = 1, box.lty = 2, box.lwd = 2, cex = 2)
+fig_label("a)", shrinkX = 0.992, shrinkY = 1.005, cex = 2.25)
+box(which = "figure", lty = 2, col = rgb(0,0,0,0.5))
+
+plot(comparingTrueVsComp09r[,1:2], xlab = "\"full\" multivariate normal integral", ylab = "composite integral obtained from \nall pairwise bivariate integrals",
+     xlim = c(-240, -120), cex.axis = 1.5, pch = 16, col = rgb(0,0,0,0.5), cex = 2.5, cex.lab = 2)
+title(main =  latex2exp::TeX("Approximate Integral Comparison: r$_{ij}$ = 0.9 Correlations"), cex.main = 2)
+# text(paste0("dimension = 118, r = ", round(cor(comparingTrueVsComp09r)[1,2], 3)), x = -217, y = -167, cex = 1.5)
+fig_label(paste0("dimension = 118, r = ", round(cor(comparingTrueVsComp09r)[1,2], 3)), cex = 1.5, region = "plot", shrinkX = 1.01, shrinkY = 1.0075)
+abline(0, 1, lwd = 3, col = 2)
+legend(x = "bottomright", legend = "1-to-1 line", col = 2, lwd = 3, lty = 1, box.lty = 2, box.lwd = 2, cex = 2)
+box(which = "figure", lty = 2, col = rgb(0,0,0,0.5))
+fig_label("b)", shrinkX = 0.9925, shrinkY = 1.0075, cex = 2.25)
+dev.off()
 
 #approximation will underestimate how tiny very low full mvn probs are
 #but this might also be running up against the limits of GenzBretz' abilities

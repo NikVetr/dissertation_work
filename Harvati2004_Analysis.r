@@ -9,14 +9,42 @@ noPCA <- T
 PCA_covWG <- T
 collapseHomo <- T
 collapseSubsp <- T
-filterOutFemales <- T
-filterOutMales <- F
+filterOutFemales <- F
+filterOutMales <- T
 filter_before_procrustes <- F
 addFemaleNeandertal <- T
 
 data <- readland.nts("/Users/nikolai/data/allPD4.nts")
 str(data) #landmarks on the rows, dimensions (xyz) on the columns, species on the slices
 data <- data[,,substr(attr(data, "dimnames")[[3]], 6, 6) != "U"]
+
+#generate sample size table
+fss <- read.table("data/female_sample_sizes.txt")
+mss <- read.table("data/male_sample_sizes.txt")
+ss <- mss
+rownames(ss) <- mss$Var1
+ss$Females <- 0
+ss$Females[match(as.character(fss$Var1), as.character(mss$Var1))] <- fss$Freq
+ss <- ss[,-1]
+colnames(ss) <- c("Males", "Females")
+ss$Total <- 0 
+ss$Total <- as.integer(ss$Males + ss$Females)
+# rownames(ss) <- paste0("\\textit{", rownames(ss), "}")
+rownames(ss) <- paste0("HACK1", rownames(ss), "HACK2")
+ss$Females <- as.integer(ss$Females)
+tableprint<-xtable::xtable(ss,label="tab:landmarkDataComposition",
+                           caption=c(paste0("A table detailing the composition of the landmark dataset used in 
+                                            our empirical analysis. Elements of the table represent numbers of individuals in each 
+                                            row species corresponding to each 
+                                            estimated column sex. Further details regarding landmarks used can be found in \\citep{harvatiNeanderthalTaxonomyReconsidered2004}."), 
+                                     "Composition of Landmark Data Used in Empirical Analysis"))
+sink("~/dissertation/tables/landmark_data.tex")
+print(tableprint,tabular.environment="longtable", floating = F) #,width="\\textwidth")
+sink()
+lines <- readLines("~/dissertation/tables/landmark_data.tex")
+lines <- gsub(pattern = "HACK1", x = lines, replacement = "\\\\textit{")
+lines <- gsub(pattern = "HACK2", x = lines, replacement = "}")
+writeLines(lines, "~/dissertation/tables/landmark_data.tex")
 
 #mean center all landmarks? landmark by landmark or vs the overall mean?
 

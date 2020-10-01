@@ -311,7 +311,7 @@ if(printToFile){
 }
 setwd("~/middleBurst")
 
-for(num in 1:n_analyses){
+for(num in 10:12){
   # num <- 2
   print(num)
   log <- read.table(file = paste0("params_", num, ".log"), header = T)[c("lambda", "delta2")]
@@ -375,6 +375,182 @@ for(num in 1:n_analyses){
   if(printToFile){dev.off()}
   
 }
+
+############################################
+# make single pretty figure for dissertation
+############################################
+
+setwd("~/middleburst_450/")
+num = 8
+log <- read.table(file = paste0("params_", num, ".log"), header = T)[c("lambda", "delta2")]
+log.branchRates <- read.table(file = paste0("params_", num, ".log"), header = T); log.branchRates <- log.branchRates[startsWith(colnames(log.branchRates), "branchRates")]
+lambda <- read.table(file = paste0("modelParameters_", num, ".txt"), header = T)["lambda"][1,1]
+delta2 <- read.table(file = paste0("modelParameters_", num, ".txt"), header = T)["delta2"][1,1]
+burstLocation <- read.table(file = paste0("modelParameters_", num, ".txt"), header = T)["burstLocation"][1,1]
+tree <- read.nexus(file = paste0("tree_", num, ".nex"))
+treeHeight <- nodeheight(tree, 1)
+
+t <- 0:(100*treeHeight)/100
+r <- sapply(1:length(t), function(x) if(t[x] > burstLocation){1 + delta2*exp(-lambda*(t[x]-burstLocation))} else{1})
+
+
+#visualize rate heterogeneity
+edgeStartEndLength <- nodeHeights(tree)
+edgeStartEndLength <- cbind(edgeStartEndLength, edgeStartEndLength[,2] - edgeStartEndLength[,1])
+branchRates <- rep(1, length(tree$edge.length))
+for(i in 1:length(branchRates)){
+  start <- edgeStartEndLength[i,1] 
+  end <- edgeStartEndLength[i,2]
+  if(start > burstLocation){
+    branchRates[i] <- branchRates[i] + 
+      (delta2 / lambda * (exp(-lambda*(start - burstLocation)) - exp(-lambda*(end - burstLocation))))/edgeStartEndLength[i,3]
+  } else if(end > burstLocation) {
+    branchRates[i] <- branchRates[i] + 
+      (delta2 / lambda * (1 - exp(-lambda*(end - burstLocation))))/edgeStartEndLength[i,3]
+  }
+}
+
+fig_label <- function(text, region="figure", pos="topleft", cex=NULL, shrinkX = 0.95, shrinkY = 0.95, ...) {
+  
+  region <- match.arg(region, c("figure", "plot", "device"))
+  pos <- match.arg(pos, c("topleft", "top", "topright", 
+                          "left", "center", "right", 
+                          "bottomleft", "bottom", "bottomright"))
+  
+  if(region %in% c("figure", "device")) {
+    ds <- dev.size("in")
+    # xy coordinates of device corners in user coordinates
+    x <- grconvertX(c(0, ds[1]), from="in", to="user")
+    y <- grconvertY(c(0, ds[2]), from="in", to="user")
+    
+    # fragment of the device we use to plot
+    if(region == "figure") {
+      # account for the fragment of the device that 
+      # the figure is using
+      fig <- par("fig")
+      dx <- (x[2] - x[1])
+      dy <- (y[2] - y[1])
+      x <- x[1] + dx * fig[1:2]
+      y <- y[1] + dy * fig[3:4]
+    } 
+  }
+  
+  # much simpler if in plotting region
+  if(region == "plot") {
+    u <- par("usr")
+    x <- u[1:2]
+    y <- u[3:4]
+  }
+  
+  sw <- strwidth(text, cex=cex) * 60/100
+  sh <- strheight(text, cex=cex) * 60/100
+  
+  x1 <- switch(pos,
+               topleft     =x[1] + sw, 
+               left        =x[1] + sw,
+               bottomleft  =x[1] + sw,
+               top         =(x[1] + x[2])/2,
+               center      =(x[1] + x[2])/2,
+               bottom      =(x[1] + x[2])/2,
+               topright    =x[2] - sw,
+               right       =x[2] - sw,
+               bottomright =x[2] - sw)
+  
+  y1 <- switch(pos,
+               topleft     =y[2] - sh,
+               top         =y[2] - sh,
+               topright    =y[2] - sh,
+               left        =(y[1] + y[2])/2,
+               center      =(y[1] + y[2])/2,
+               right       =(y[1] + y[2])/2,
+               bottomleft  =y[1] + sh,
+               bottom      =y[1] + sh,
+               bottomright =y[1] + sh)
+  
+  old.par <- par(xpd=NA)
+  on.exit(par(old.par))
+  
+  text(x1*shrinkX, y1*shrinkY, text, cex=cex, ...)
+  return(invisible(c(x,y)))
+}
+
+#actually make the figure
+
+grDevices::cairo_pdf(filename = "/Volumes/macOS/Users/nikolai/dissertation/figures/middle_burst.pdf", width = 2250 / 72, height = 750 / 72)
+
+par(mfrow = c(1,3), mar = c(8.5,8.5,6,2))
+plot(t,r,type = "l", ylim = c(0, 1+qexp(p = 0.999, rate = 1)), lwd = 3, col = "navy", main = "", xaxt = "n", yaxt = "n", frame.plot = F, xlab = "", ylab = "")
+axis(side = 1, tck = -0.02, lwd = 3, lwd.ticks = 3, cex.axis = 3, labels = rep("", 6), at = 0:5)
+mtext(text = 0:5, side = 1, line = 3, at = 0:5, cex = 2)
+axis(side = 2, tck = -0.02, lwd = 3, lwd.ticks = 3, cex.axis = 3, labels = rep("", 5), at = 0:4 * 2)
+mtext(text = 0:4 * 2, side = 2, line = 1.75, at = 0:4 * 2, cex = 2)
+
+box("plot", lwd = 3, lty = 1)
+title(xlab = latex2exp::TeX(paste0("Time")), cex.lab = 3, line = 6.5)
+title(ylab = latex2exp::TeX(paste0("Rate ($\\sigma^2$)")), cex.lab = 3, line = 4.5)
+box(which = "figure", lwd = 2, lty = 2)
+fig_label(text = paste0("a", ")"), cex = 5, shrinkX = 0.85, shrinkY = 0.975)
+title(main = latex2exp::TeX(paste0("Rate Variation ($\\sigma^2$) Through Time")), cex.main = 3.75)
+legend(x = "topleft", y = 1+qexp(p = 0.99, rate = 1), legend = c("prior", "posterior", "true value"), box.lty = 2, box.lwd = 4, cex = 3,
+       lwd = c(3,3,6), col = c(wesanderson::wes_palette("FantasticFox1", 5)[4], wesanderson::wes_palette("FantasticFox1", 5)[3], "navy"))
+
+#plot prior
+for(i in 1:5e3){
+  prior_delta2 <- rexp(1, rate = 1)
+  prior_lambda <- 10^runif(n = 1, 0,1)
+  prior_r <- sapply(1:length(t), function(x) if(t[x] > burstLocation){1 + prior_delta2*exp(-prior_lambda*(t[x]-burstLocation))} else{1})
+  lines(t,prior_r,type = "l", ylim = c(0, 1+delta2), col = make.transparent(wesanderson::wes_palette("FantasticFox1", 5)[4], 0.05))
+}
+
+#plot posterior
+for(i in 1:length(log$lambda)){
+  post_delta2 <- log$delta2[i]
+  post_lambda <- log$lambda[i]
+  post_r <- sapply(1:length(t), function(x) if(t[x] > burstLocation){1 + post_delta2*exp(-post_lambda*(t[x]-burstLocation))} else{1})
+  lines(t,post_r,type = "l", ylim = c(0, 1+delta2), col = make.transparent(wesanderson::wes_palette("FantasticFox1", 5)[3], 0.075))
+}
+lines(t,r, ylim = c(0, 1+delta2), lwd = 4, col = "black")
+
+par(mar = c(8.5,8.5,8.5,2))
+colfunc <- colorRampPalette(viridis::magma(5))
+plotBranchbyTrait(tree, x = branchRates, mode = "edges", palette = colfunc, show.tip.label = F, legend = F)
+
+segments(x0 = burstLocation, x1 = burstLocation, y0 = 5, y1 = 455, lwd = 5, col = rgb(1,0,0,0.6), lty = 2)
+text("BURST", x = burstLocation, y = -5, font = 2, cex = 3)
+box(which = "figure", lwd = 2, lty = 2)
+fig_label(text = paste0("b", ")"), cex = 5, shrinkX = -0.65, shrinkY = 0.975)
+
+xl <- 0.1; yb <- 70; xr <- 0.3; yt <- 300; 
+rect(
+  xl,
+  head(seq(yb,yt,(yt-yb)/100),-1),
+  xr,
+  yt = tail(seq(yb,yt,(yt-yb)/100),-1),
+  col=colfunc(100), lwd = 0.15
+)
+text(labels = c("1.0", round(seq(from = 1, to = 4.4, length.out = 12), 1)[-1]), x = xr+(xr-xl)/2, y = seq(yb,yt,length.out = 12), las=2, cex=1.75)
+text(labels = latex2exp::TeX(paste0("$\\sigma^2$")), x = xl + (xr-xl)/1.25, y = yt+(yt-yb)/20, font = 2, cex = 3.5)
+
+colfunc <- colorRampPalette(c("white", "black"))
+plotBranchbyTrait(tree, x = branchRates, mode = "edges", palette = colfunc, show.tip.label = F, legend = F)
+segments(x0 = burstLocation, x1 = burstLocation, y0 = 5, y1 = 455, lwd = 5, col = rgb(1,0,0,0.6), lty = 2)
+text("BURST", x = burstLocation, y = -5, font = 2, cex = 3)
+box(which = "figure", lwd = 2, lty = 2)
+fig_label(text = paste0("c", ")"), cex = 5, shrinkX = -0.5, shrinkY = 0.975)
+
+xl <- 0.1; yb <- 70; xr <- 0.3; yt <- 300; 
+rect(
+  xl,
+  head(seq(yb,yt,(yt-yb)/100),-1),
+  xr,
+  yt = tail(seq(yb,yt,(yt-yb)/100),-1),
+  col=colfunc(100), lwd = 0.15
+)
+text(labels = c("1.0", round(seq(from = 1, to = 4.4, length.out = 12), 1)[-1]), x = xr+(xr-xl)/2, y = seq(yb,yt,length.out = 12), las=2, cex=1.75)
+text(labels = latex2exp::TeX(paste0("$\\sigma^2$")), x = xl + (xr-xl)/1.25, y = yt+(yt-yb)/20, font = 2, cex = 3.5)
+
+
+dev.off()
 
 ############################################################################################
 #################### Specify Multiple Analyses with Bernoulli Indicator ####################

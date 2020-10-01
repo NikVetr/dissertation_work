@@ -46,22 +46,75 @@ panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
   txt <- format(c(r, 0.123456789), digits = digits)[1]
   txt <- paste0(prefix, txt)
   if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
-  text(0.5, 0.5, txt, cex = cex.cor * r)
+  text(0.5, 0.5, paste0("r = ", txt), cex = cex.cor * r * 0.65)
 }
 
 one.to.one.line <- function(x,y,...){
-  points(x,y,...)
-  abline(a = 0,b = 1, lwd = 4,...)
+  points(x,y,cex = 2, pch = 16, col = rgb(0,0,0,0.25), cex.axis = 4,...)
+  abline(a = 0,b = 1, lwd = 3, col = "red",...)
 }
 
 means <- sapply(1:length(data), function(run) as.vector(data[[run]]$means))
-pairs(means, col = rgb(0,0,0,0.1), main = "means", lower.panel = panel.cor, upper.panel = one.to.one.line)
 
 cors <- sapply(1:length(data), function(run) as.vector(data[[run]]$cor[upper.tri(data[[run]]$cor)]))
-pairs(cors, col = rgb(0,0,0,0.3), main = "correlations", lower.panel = panel.cor, upper.panel = one.to.one.line)
 
 threshes <- sapply(1:length(data), function(run) as.vector(data[[run]]$threshold_mat)[as.vector(data[[run]]$threshold_mat != Inf)])
-pairs(threshes, col = rgb(0,0,0,0.3), main = "thresholds", lower.panel = panel.cor, upper.panel = one.to.one.line)
+
+
+#make figure 4.3
+grDevices::cairo_pdf(filename = "/Volumes/macOS/Users/nikolai/dissertation/figures/chpt4_figure3.1.pdf", width = 750 / 72, height = 750 / 72)
+par(mar = c(5,7,3,1))
+pairs(means, main = "", lower.panel = panel.cor, upper.panel = one.to.one.line, labels = paste0("Chain ", 1:4), cex.labels = 4)
+title(main = "Means        ", cex.main = 3)
+fig_label("a)", shrinkX = 0.9, shrinkY = 0.99, cex = 3.25)
+box(which = "figure", lty = 2, col = rgb(0,0,0,0.75), lwd = 2)
+dev.off()
+
+grDevices::cairo_pdf(filename = "/Volumes/macOS/Users/nikolai/dissertation/figures/chpt4_figure3.2.pdf", width = 750 / 72, height = 750 / 72)
+par(mar = c(5,7,3,1))
+pairs(cors, main = "", lower.panel = panel.cor, upper.panel = one.to.one.line, labels = paste0("Chain ", 1:4), cex.labels = 4)
+title(main = "Correlations        ", cex.main = 3)
+fig_label("b)", shrinkX = 0.9, shrinkY = 0.99, cex = 3.25)
+box(which = "figure", lty = 2, col = rgb(0,0,0,0.75), lwd = 2)
+dev.off()
+
+grDevices::cairo_pdf(filename = "/Volumes/macOS/Users/nikolai/dissertation/figures/chpt4_figure3.3.pdf", width = 750 / 72, height = 750 / 72)
+par(mar = c(5,7,3,1))
+pairs(threshes, main = "", lower.panel = panel.cor, upper.panel = one.to.one.line, labels = paste0("Chain ", 1:4), cex.labels = 4)
+title(main = "Thresholds        ", cex.main = 3)
+fig_label("c)", shrinkX = 0.9, shrinkY = 0.99, cex = 3.25)
+box(which = "figure", lty = 2, col = rgb(0,0,0,0.75), lwd = 2)
+dev.off()
+
+library(magick)
+img1 <- image_read("/Volumes/macOS/Users/nikolai/dissertation/figures/chpt4_figure3.1.pdf")
+img2 <- image_read("/Volumes/macOS/Users/nikolai/dissertation/figures/chpt4_figure3.2.pdf")
+img3 <- image_read("/Volumes/macOS/Users/nikolai/dissertation/figures/chpt4_figure3.3.pdf")
+
+grDevices::cairo_pdf(filename = "/Volumes/macOS/Users/nikolai/dissertation/figures/chpt4_figure3.pdf", width = 2250 / 72, height = 750 / 72)
+par(mar = c(0.05,0,0.075,0))
+imgcomb <- image_append(c(img1, img2, img3))
+plot(imgcomb)
+dev.off()
+
+# Combine images
+logo <- image_read("https://jeroen.github.io/images/Rlogo.png")
+oldlogo <- image_read("https://jeroen.github.io/images/Rlogo-old.png")
+# Create morphing animation
+both <- image_scale(c(oldlogo, logo), "400")
+image_average(image_crop(both))
+image_animate(image_morph(both, 10))
+# Create thumbnails from GIF
+banana <- image_read("https://jeroen.github.io/images/banana.gif")
+length(banana)
+image_average(banana)
+image_flatten(banana)
+image_append(banana)
+image_append(banana, stack = TRUE)
+# Append images together
+wizard <- image_read("wizard:")
+image_append(image_scale(c(image_append(banana[c(1,3)], stack = TRUE), wizard)))
+image_composite(banana, image_scale(logo, "300"))
 
 mean_of_thresholds <- data[[1]]$threshold_mat
 for(i in 2:length(data)){

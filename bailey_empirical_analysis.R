@@ -19,7 +19,7 @@ library(gtools)
 nrounds <- 12
 noSmartStart = F
 useStarPhylogeny <- T
-doEDA <- T
+doEDA <- F
 jointThreshAndMeans <- F; jTM_startAtRound <- 6
 combineAsian <- F
 combineSW_ASIAN <- F
@@ -49,6 +49,74 @@ adjust_conds_at_pop_level <- F
 use_conditional_expectation <- F
 useNearPDforTree <- F
 
+makeTransparent<-function(someColor, alpha=100){
+  newColor<-col2rgb(someColor)
+  apply(newColor, 2, function(curcoldata){rgb(red=curcoldata[1], green=curcoldata[2],
+                                              blue=curcoldata[3],alpha=alpha, maxColorValue=255)})
+}
+fig_label <- function(text, region="figure", pos="topleft", cex=NULL, shrinkX = 0.95, shrinkY = 0.95, ...) {
+  
+  region <- match.arg(region, c("figure", "plot", "device"))
+  pos <- match.arg(pos, c("topleft", "top", "topright", 
+                          "left", "center", "right", 
+                          "bottomleft", "bottom", "bottomright"))
+  
+  if(region %in% c("figure", "device")) {
+    ds <- dev.size("in")
+    # xy coordinates of device corners in user coordinates
+    x <- grconvertX(c(0, ds[1]), from="in", to="user")
+    y <- grconvertY(c(0, ds[2]), from="in", to="user")
+    
+    # fragment of the device we use to plot
+    if(region == "figure") {
+      # account for the fragment of the device that 
+      # the figure is using
+      fig <- par("fig")
+      dx <- (x[2] - x[1])
+      dy <- (y[2] - y[1])
+      x <- x[1] + dx * fig[1:2]
+      y <- y[1] + dy * fig[3:4]
+    } 
+  }
+  
+  # much simpler if in plotting region
+  if(region == "plot") {
+    u <- par("usr")
+    x <- u[1:2]
+    y <- u[3:4]
+  }
+  
+  sw <- strwidth(text, cex=cex) * 60/100
+  sh <- strheight(text, cex=cex) * 60/100
+  
+  x1 <- switch(pos,
+               topleft     =x[1] + sw, 
+               left        =x[1] + sw,
+               bottomleft  =x[1] + sw,
+               top         =(x[1] + x[2])/2,
+               center      =(x[1] + x[2])/2,
+               bottom      =(x[1] + x[2])/2,
+               topright    =x[2] - sw,
+               right       =x[2] - sw,
+               bottomright =x[2] - sw)
+  
+  y1 <- switch(pos,
+               topleft     =y[2] - sh,
+               top         =y[2] - sh,
+               topright    =y[2] - sh,
+               left        =(y[1] + y[2])/2,
+               center      =(y[1] + y[2])/2,
+               right       =(y[1] + y[2])/2,
+               bottomleft  =y[1] + sh,
+               bottom      =y[1] + sh,
+               bottomright =y[1] + sh)
+  
+  old.par <- par(xpd=NA)
+  on.exit(par(old.par))
+  
+  text(x1*shrinkX, y1*shrinkY, text, cex=cex, ...)
+  return(invisible(c(x,y)))
+}
 logLL_bivProb_optim_multithresh <- function(par_to_opt, dat){ #TMB package may help with speedup
   lognormal_prior_on_beta_shape_params_for_corrs <- c(0,1) #let's not infer the shape of the beta distribution,
   # but just fix it to the appropriate beta of the marginal LKJ -- ehhh this is too informative
@@ -1314,14 +1382,8 @@ if(doEDA){
   points(x = col_j, y = row_i, col = cols[as.vector(present)+1], cex = 0.5, pch = 15)
   points(x = rep(-3, length(popcols)), y = 1:length(popcols), col = popcols, cex = 1.5, pch = 15, cex.main = 2)
   dev.off()
+}
 
-
-  par(mfrow = c(1,3))
-  plot(sort(apply(present, 1, mean), decreasing = T), type = "l", xlab = "individual index", ylab = "proportion traits present")
-  # abline(h = prop_indiv_filter, lty = 2)
-  plot(sort(apply(present, 2, mean), decreasing = T), type = "l", xlab = "trait index", ylab = "proportion individuals present")
-  # abline(h = prop_traits_filter, lty = 2)
-}  
 
 present_filtered <- present[apply(present, 1, mean) > prop_indiv_filter, apply(present, 2, mean) > prop_traits_filter]
 pop_names <- d[,1]
@@ -1331,9 +1393,8 @@ npops <- length(unique(as.integer(d[,1])))
 ntraits <- length(d[1,]) - 2
 per_pop_ntraits_thresh <- 2
 sum(sapply(1:ntraits, function(trait) all(sapply(1:npops, function(pop) sum(present[,trait][as.integer(d[,1]) == pop]))  > per_pop_ntraits_thresh)))
-  
+
 if(doEDA){
-  # par(mfrow = c(1,1))
   if(!exists("y")){
     y <- as.list(1:length(unique(pop_names)))
     for(i in 1:length(unique(pop_names))){
@@ -1343,17 +1404,83 @@ if(doEDA){
       )
     }
   }
-  xloc = c(8,25,12,20,17,18,16,11)
-  for(i in 1:length(unique(pop_names))){
-    if(i == 1){
-      plot(1:30, y[[i]], type = "l", xlab = "number of a traits observed in * populations threshold", ylab = "number of traits", xlim = c(1,30), ylim = c(0,140))
-      text(x = xloc[i], y = y[[i]][xloc[i]]+3, labels = paste0("* = ", i))
-    } else {
-      lines(1:30, y[[i]])
-      text(x = xloc[i], y = y[[i]][xloc[i]]+3, labels = paste0("* = ", i))
+}
+
+trait_names <- colnames(present)
+trait_names <- gsub("PM", "P", trait_names)
+trait_names <- gsub("L2", "LI2", trait_names)
+trait_names <- gsub("X", "LM3.X", trait_names)
+tooth_indices_type <- c("I", "C", "P", "M")
+tooth_indices_type_index <- sapply(1:length(trait_names), function(x) which(sapply(tooth_indices_type, function(y)
+  length(grep(pattern = y, x = strsplit(trait_names[[x]], split = "\\.")[[1]][1])) == 1)))
+
+if(doEDA){
+  cols <- c(wesanderson::wes_palette("BottleRocket2", 3), wesanderson::wes_palette("Darjeeling1", 5)[2])
+  grDevices::cairo_pdf(filename = "/Volumes/macOS/Users/nikolai/dissertation/figures/bailey_figure1.pdf", width = 15, height = 5)
+  par(mfrow = c(1,3), mar = c(4.5,6,4,2))
+  plot(sort(apply(present, 1, mean), decreasing = T), type = "l", xlab = "Individual Index", ylab = "Proportion of Traits Present", cex.axis = 1.75, cex.lab = 2, lwd = 3, cex.main = 2,
+       main = "Distribution of Specimen Missingness")
+  fig_label("a)", cex = 2.5, shrinkX = 0.975, shrinkY = 0.98)
+  decr_ord <- order(apply(present, 1, mean), decreasing = T)
+  for(i in 1:length(decr_ord)){
+    indiv <- decr_ord[i]
+    start_pos = 0
+    for(j in 1:4){
+      prop_pres <- (sum(present[indiv,tooth_indices_type_index == j]) / ncol(present))
+      segments(x0 = i, x1 = i, y0 = start_pos, y1 = start_pos + prop_pres, col = cols[j])
+      start_pos <- start_pos + prop_pres
     }
   }
+  legend(x = "topright", legend = c("Incisor", "Canine", "Premolar", "Molar"), fill = cols, box.lty = 2, box.lwd = 1.25, cex = 2)
+  box(lty = 2, which = "figure")
+  
+  pops <- 1:8
+  pop_indices <- as.numeric(d[,1])
+  
+  cols <- c(c(wesanderson::wes_palette("BottleRocket2", 4), wesanderson::wes_palette("Darjeeling1", 5)[-4])[-4], "#871f78")
+  plot(sort(apply(present, 2, mean), decreasing = T), type = "l", xlab = "Trait Index", ylab = "Proportion Specimens Present", cex.axis = 1.75, cex.lab = 2, lwd = 3, cex.main = 2,
+       main = "Distribution of Trait Missingness")
+  fig_label("b)", cex = 2.5, shrinkX = 0.975, shrinkY = 0.98)
+  decr_ord <- order(apply(present, 2, mean), decreasing = T)
+  for(i in 1:length(decr_ord)){
+    trait <- decr_ord[i]
+    start_pos = 0
+    for(j in 1:8){
+      pop <- order(table(pop_indices), decreasing = T)[j]
+      prop_pres <- (sum(present[pop_indices == pop, trait]) / nrow(present))
+      segments(x0 = i, x1 = i, y0 = start_pos, y1 = start_pos + prop_pres, col = cols[j], lwd = 2.5)
+      start_pos <- start_pos + prop_pres
+    }
+  }
+  legend(x = "topright", legend = c("American", "Sub-Saharan African", "Neandertal", "European", "Oceanian", "South Asian", "West Asian", "Northeast Asian"), 
+         fill = cols, box.lty = 2, box.lwd = 1.25, cex = 1.25)
+  box(lty = 2, which = "figure")
+
+  xloc = c(18,21.5,22.5,20,17,15.5,12,9)
+  xadj <- c(0,-.035,-0.5,0,0,-0.5,0,-0.1)
+  yadj = c(0,-0.5,0,0,0,-0.5,0,-1.75)
+  rots <- 360 - c(0, 12.5, 22.5, 45, 55, 62.5, 72.5, 62.5)
+  labs <- c("one", "two", "three", "four", "five", "six", "seven", "eight")
+  for(i in 1:length(unique(pop_names))){
+    if(i == 1){
+      plot(1:30, y[[i]], type = "l", xlab = "Minimum Number of Traits Per Population", ylab = "Number of Traits in Filtered Dataset", xlim = c(1,30), ylim = c(0,140), 
+           lwd = 2, cex.axis = 1.75, cex.lab = 2, cex.main = 2, main = "Filtering Traits at Population Scale")
+      text(x = xloc[i], y = y[[i]][xloc[i]]+2.5, labels = labs[i], cex = 1.5, srt = rots[i])
+    } else {
+      lines(1:30, y[[i]], lwd = 2)
+      text(x = xloc[i]+0.5+xadj[i], y = y[[i]][xloc[i]]+3.25+yadj[i], labels = labs[i], cex = 1.5, srt = rots[i])
+    }
+  }
+  legend(x = "bottomleft", legend = "# pops", box.lty = 2, box.lwd = 1.25, cex = 1.5, lwd = 2)
+  box(lty = 2, which = "figure")
+  fig_label("c)", cex = 2.5, shrinkX = 0.975, shrinkY = 0.98)
+  
+  dev.off()
 }
+
+
+
+
 # x <- (sapply(1:ntraits, function(trait) (sapply(1:npops, function(pop) sum(present[,trait][as.integer(d[,1]) == pop])))))
 # apply(x > 8, 1, sum)
 
@@ -1408,6 +1535,25 @@ colnames(d)[non_consec_vals] #to remove, transform, or not?
 sapply(pops, function(pop) d[d[,1]==pop,"UI2.DSH"]) #for example...
 n_thresholds <- sapply(2:ncol(d), function(trait) max(as.numeric(unique(d[,trait])[!is.na(unique(d[,trait]))])))
 max_thresholds_count <- max(n_thresholds)
+
+#prepare data description table
+popnames_table_names <- c("Neandertal", "Oceanian", "European", "West Asian", "South Asian", "Northeast Asian", "Sub-Saharan African", "American")
+popnames_table_codes <- c("NEAN", "OCEAN", "EUR", "WAS", "SAS", "NEAS", "SSAF", "AMER")
+popnames_codes <- as.character(unique(d[,1]))
+data_composition <- sapply(trait_names, function(trait) sapply(popnames_codes, function(pop) sum(!is.na(d[d[,1]==pop,trait]))))
+rownames(data_composition) <- popnames_table_codes
+data_composition <- t(data_composition)
+tableprint<-xtable::xtable(data_composition,label="tab:dentalDataComposition",
+                           caption=c(paste0("A table detailing the composition of the discrete dental data used in 
+                                     our empirical analysis. Elements of the table represent numbers of individuals in each 
+                                     column population with a definitive observation in each 
+                                     row trait. Population codes are as follow: ", 
+                                            paste0(sapply(1:8, function(pop) paste0(popnames_table_codes[pop], " (\\textit{", popnames_table_names[pop], "})")), collapse = ", "), 
+                                            ". Details regarding trait codes key can be found in \\citep{baileyNeandertalDentalMorphology2002}."), 
+                                            "Composition of Dental Data Used in Empirical Analysis"))
+sink("~/dissertation/tables/dental_data.tex")
+print(tableprint,tabular.environment="longtable", floating = F) #,width="\\textwidth")
+sink()
 
 #specify constraint array
 constraintArray <- list()
