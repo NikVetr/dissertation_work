@@ -779,6 +779,70 @@ blooming_onion_tune_clean <- function (cor, varN = 0.1, betaWindow = NA) {
 }
 
 
+fig_label <- function(text, region="figure", pos="topleft", cex=NULL, shrinkX = 0.95, shrinkY = 0.95, ...) {
+  
+  region <- match.arg(region, c("figure", "plot", "device"))
+  pos <- match.arg(pos, c("topleft", "top", "topright", 
+                          "left", "center", "right", 
+                          "bottomleft", "bottom", "bottomright"))
+  
+  if(region %in% c("figure", "device")) {
+    ds <- dev.size("in")
+    # xy coordinates of device corners in user coordinates
+    x <- grconvertX(c(0, ds[1]), from="in", to="user")
+    y <- grconvertY(c(0, ds[2]), from="in", to="user")
+    
+    # fragment of the device we use to plot
+    if(region == "figure") {
+      # account for the fragment of the device that 
+      # the figure is using
+      fig <- par("fig")
+      dx <- (x[2] - x[1])
+      dy <- (y[2] - y[1])
+      x <- x[1] + dx * fig[1:2]
+      y <- y[1] + dy * fig[3:4]
+    } 
+  }
+  
+  # much simpler if in plotting region
+  if(region == "plot") {
+    u <- par("usr")
+    x <- u[1:2]
+    y <- u[3:4]
+  }
+  
+  sw <- strwidth(text, cex=cex) * 60/100
+  sh <- strheight(text, cex=cex) * 60/100
+  
+  x1 <- switch(pos,
+               topleft     =x[1] + sw, 
+               left        =x[1] + sw,
+               bottomleft  =x[1] + sw,
+               top         =(x[1] + x[2])/2,
+               center      =(x[1] + x[2])/2,
+               bottom      =(x[1] + x[2])/2,
+               topright    =x[2] - sw,
+               right       =x[2] - sw,
+               bottomright =x[2] - sw)
+  
+  y1 <- switch(pos,
+               topleft     =y[2] - sh,
+               top         =y[2] - sh,
+               topright    =y[2] - sh,
+               left        =(y[1] + y[2])/2,
+               center      =(y[1] + y[2])/2,
+               right       =(y[1] + y[2])/2,
+               bottomleft  =y[1] + sh,
+               bottom      =y[1] + sh,
+               bottomright =y[1] + sh)
+  
+  old.par <- par(xpd=NA)
+  on.exit(par(old.par))
+  
+  text(x1*shrinkX, y1*shrinkY, text, cex=cex, ...)
+  return(invisible(c(x,y)))
+}
+
 dim <- 5
 target_corr <- rlkj(dim)
 true_corrs <- target_corr[upper.tri(target_corr)]
@@ -1000,7 +1064,7 @@ blooming_onion_tune_chol <- function (upper_cholesky_factor, ind, varN = 0.1, be
   return(list(sample = R, log_prop_ratio = log_prop_ratio))
 }
 
-plotMatrix <- function(mobject, size, location, lwd = 2, grid = T, font = 1, cex = 1, rownames = T, colnames = T, title = T, title.label = "Matrix Object"){
+plotMatrix <- function(mobject, size, location, lwd = 2, lwd_inner = 1.5, grid = T, font = 1, cex = 1, rownames = T, colnames = T, title = T, title.label = "Matrix Object"){
   lines(rbind(location, location + c(0,size[2])), lwd = lwd)
   lines(rbind(location, location + c(size[1]/8,0)), lwd = lwd)
   lines(rbind(location + c(0, size[2]), location + c(size[1]/8,size[2])), lwd = lwd)
@@ -1009,10 +1073,10 @@ plotMatrix <- function(mobject, size, location, lwd = 2, grid = T, font = 1, cex
   lines(rbind(location + c(size[1],0), location + c(size[1],0) - c(size[1]/8,0)), lwd = lwd)
   if(grid == T){
     for(i in 1:(dim(mobject)[1]-1)){
-      lines(rbind(location + c(0,i*size[2]/dim(mobject)[1]), location + c(size[1], i*size[2]/dim(mobject)[1])))
+      lines(rbind(location + c(0,i*size[2]/dim(mobject)[1]), location + c(size[1], i*size[2]/dim(mobject)[1])), lwd = lwd_inner)
     }
     for(j in 1:(dim(mobject)[2]-1)){
-      lines(rbind(location + c(j*size[1]/dim(mobject)[2],0), location + c(j*size[1]/dim(mobject)[2], size[2])))
+      lines(rbind(location + c(j*size[1]/dim(mobject)[2],0), location + c(j*size[1]/dim(mobject)[2], size[2])), lwd = lwd_inner)
     }
   }
   if(class(mobject[1,1]) != "expression" & class(mobject[1,1]) != "character"){mobject <- matrix(as.character(mobject), nrow = dim(mobject)[1], ncol = dim(mobject)[2])}
@@ -1045,9 +1109,13 @@ plotMatrix <- function(mobject, size, location, lwd = 2, grid = T, font = 1, cex
 set.seed(1)
 dim <- 10
 target_corr <- rlkj(dim, eta = 1)
-par(mfrow = c(1,1), mar = c(0,0,0,0))
+
+# grDevices::cairo_pdf(filename = "/Users/nikolai/dissertation/figures/appendix_correlationmatrix.pdf", width = 800 / 72, height = 800 / 72)
+# par(mfrow = c(1,1), mar = c(0,0,0,0))
 # plot(1:150, 1:150, col = "white", axes = F, xlab = "", ylab = ""); 
-# plotMatrix(mobject = round(target_corr, digits = 3), size = c(150,150), location = c(0,0), title.label = "", cex = 1.25)
+# plotMatrix(mobject = round(target_corr, digits = 3), size = c(150,150), location = c(0,0), title.label = "", cex = 1.8, lwd = 3, lwd_inner = 2)
+# dev.off()
+
 true_corrs <- target_corr[upper.tri(target_corr)]
 n_obs <- 50
 varN <- rep(0.5, dim)
@@ -1057,9 +1125,8 @@ obs <- rmvnorm(n = n_obs, mean = rep(0, dim), sigma = target_corr)
 emp_corrs <- cor(obs)[upper.tri(diag(dim))]
 par(mfrow = c(ifelse(dim < 5, choose(dim, 2), 4), 2))
 
-
 corr_init <- chol(rlkj(dim))
-n_iter <- 1E9
+n_iter <- 2E9
 thin <- 1E4
 n_out <- round(n_iter/thin)
 tuning = T; tune_bouts = 5; tune_helper <- 2
@@ -1182,7 +1249,8 @@ if(!sampleUniform){
 }
 
 if(!sampleUniform){
-  corrs <- sapply(1:n_out, function(x) corr_mats[,,x][upper.tri(diag(dim))])
+  load(file = "corr_mats")
+  corrs <- sapply(1:dim(corr_mats_sw)[3], function(x) corr_mats[,,x][upper.tri(diag(dim))])
   ind_mat <- matrix(1:dim^2, dim, dim)
   target_ind_mat <- ind_mat[upper.tri(ind_mat)]
   ind_mat <- t(sapply(1:choose(dim, 2), function(x) which(ind_mat == target_ind_mat[x], arr.ind = T)))
@@ -1196,9 +1264,11 @@ if(!sampleUniform){
 }
 
 if(sampleUniform){
+  save(file = "corr_mats_unif", corr_mats)
   eta <- 1
-  
+  corrs <- sapply(1:n_out, function(x) corr_mats[,,x][upper.tri(diag(dim))])
   par(mfrow = c(3, 2))
+  burnin_prop <- 0.55
   dets_samp <- (sapply(1:n_out, function(x) det(corr_mats[,,x])))[(n_out * burnin_prop) : n_out]
   hist(dets_samp, main = "Sampled Determinants")
   title(main = paste0("dimension = ", dim), outer = T, line = -2, cex.main = 2)
@@ -1223,21 +1293,48 @@ if(sampleUniform){
   hist(as.vector(corrs_targ), main = "Marginal Target Correlations")
   
   #for paper appendix figure
-  par(mfrow = c(1, 2))
+  grDevices::cairo_pdf(filename = "/Users/nikolai/dissertation/figures/app_lkj1_samples.pdf", width = 1500 / 72, height = 700 / 72)
+  par(mfrow = c(1,2), mar = c(6,8.75,3.5,1))
+  
   plot(x = quantile(dets_samp, probs = c(1:99)/100),
-       y = quantile(dets_targ, probs = c(1:99)/100),
-       type = "l", main = "Q-Q Plot of Determinants", xlab = "MCMC samples using novel proposal distribution", 
-       ylab = expression(paste("implied flat distribution: LKJ(", eta, " = 1)"))); 
-  abline(a = 0, b = 1, lty = 2, col = 3)
-  legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,3), lty = c(1,2))
+       y = quantile(dets_targ, probs = c(1:99)/100), xlab = "", ylab = "", xaxt = "n", yaxt = "n",
+       type = "l", col = rgb(0,0,0,0.95), lwd = 2, xlim = c(0,0.015), ylim = c(0,0.015))
+  title(xlab = "novel proposals: quantiles", cex.lab = 2, line = 4.25)
+  title(ylab = expression(paste("implied flat distribution, LKJ(", eta, " = 1): quantiles")), cex.lab = 2, line = 6)
+  box(lwd=4)
+  box(which = "figure", lwd = 2, lty = 2)
+  axis(1, at = 0:3 / 200, labels = rep("", 4), lwd = 4, cex.axis = 3, tck = -0.025)
+  mtext(text = 0:3 / 200, side = 1, at = 0:3 / 200, cex = 2, line = 1.75)
+  axis(2, at = 0:3 / 200, labels =  rep("", 4), lwd = 4, cex.axis = 3, tck = -0.025)
+  mtext(text = 0:3 / 200, side = 2, at = 0:3 / 200, cex = 2, line = 1.25, las = 2)
+  abline(a = 0, b = 1, lty = 2, col = 2, lwd = 3)
+  legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,2), lty = c(1,2), lwd = c(2,3), cex = 2, box.lty = 2, box.lwd = 4)
+  title("Quantile-Quantile Plot  of Determinants", cex.main = 2.5)
+  fig_label("a)", shrinkX = 0.985, shrinkY = 0.9875, cex = 3.25)
   
-  plot(x = quantile(as.vector(corrs), probs = c(1:99)/100),
-       y = quantile(as.vector(corrs_targ), probs = c(1:99)/100),
-       type = "l", main = "Q-Q Plot of Marginal Correlations", xlab = "MCMC samples using novel proposal distribution", 
-       ylab = expression(paste("implied flat distribution: LKJ(", eta, " = 1)"))); 
-  abline(a = 0, b = 1, lty = 2, col = 3)
-  legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,3), lty = c(1,2))
+  par(mar = c(6,7.75,3.5,1))
+  plot(x = quantile(as.vector(corrs), probs = c(1:99)/100), xlim = c(-0.6, 0.6), ylim = c(-0.6, 0.6), lwd = 2,
+       y = quantile(as.vector(corrs_targ), probs = c(1:99)/100), xlab = "", ylab = "", xaxt = "n", yaxt = "n",
+       type = "l", col = rgb(0,0,0,0.95))
+  title(xlab = "novel proposals: quantiles", cex.lab = 2, line = 4.25)
+  title(ylab = expression(paste("implied flat distribution, LKJ(", eta, " = 1): quantiles")), cex.lab = 2, line = 4.95)
+  box(lwd=4)
+  box(which = "figure", lwd = 2, lty = 2)
+  axis(1, at = -3:3/5, labels = rep("", 7), lwd = 4, cex.axis = 3, tck = -0.025)
+  mtext(text = -3:3/5, side = 1, at = -3:3/5, cex = 2, line = 1.75)
+  axis(2, at = -3:3/5, labels =  rep("", 7), lwd = 4, cex.axis = 3, tck = -0.025)
+  mtext(text = -3:3/5, side = 2, at = -3:3/5, cex = 2, line = 1.25, las = 2)
+  abline(a = 0, b = 1, lty = 2, col = 2, lwd = 3)
+  legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,2), lty = c(1,2), lwd = c(2,3), cex = 2, box.lty = 2, box.lwd = 4)
+  title("Quantile-Quantile Plot of Marginal Correlations", cex.main = 2.25)
+  for(i in 2:nrow(corrs)){
+    lines(x = quantile(corrs[i,], probs = c(1:99)/100), lwd = 2,
+          y = quantile(corrs_targ[i,], probs = c(1:99)/100), col = rgb(0,0,0,0.5)); 
+  }
+  abline(a = 0, b = 1, lty = 2, col = 2, lwd = 3)
+  fig_label("b)", shrinkX = 0.985, shrinkY = 0.975, cex = 3.25)
   
+  dev.off()
 }
 
 paste0("acceptance ratio = ", n_accept / n_prop)
@@ -1358,7 +1455,8 @@ for(i in 2:n_iter){
 }
 toc()
 save(file = "corr_mats_sw", corr_mats_sw)
-corrs_sw <- sapply(1:n_out, function(x) corr_mats_sw[,,x][upper.tri(diag(dim))])
+load("corr_mats_sw")
+corrs_sw <- sapply(1:dim(corr_mats_sw)[3], function(x) corr_mats_sw[,,x][upper.tri(diag(dim))])
 n_accept / n_prop
 par(mfrow = c(3, 2))
 for(i in 1:choose(dim, 2)){
@@ -1377,24 +1475,55 @@ heidel.diag(as.mcmc.list(list(mcmc(t(corrs[,(n_out * burnin_prop) : n_out])), mc
 effectiveSize(as.mcmc.list(list(mcmc(t(corrs[,(n_out * burnin_prop) : n_out])), mcmc(t(corrs_sw[,(n_out * burnin_prop) : n_out])))))
 
 #compare percentiles of the two corrs and their covariances
-par(mfrow = c(1,2))
-plot(x = quantile(corrs[1,], probs = c(1:99)/100), xlab = "novel proposal distribution quantiles", ylab = "sliding window proposal distribution quantiles", 
-     xlim = c(min(corrs), max(corrs)), ylim = c(min(corrs_sw), max(corrs_sw)), xaxt = "n", yaxt = "n",
-     y = quantile(corrs_sw[1,], probs = c(1:99)/100), type = "l", col = rgb(0,0,0,0.5)); 
-axis(side = 2, labels = -10:10/10, at = -10:10/10)
-axis(side = 1, labels = -10:10/10, at = -10:10/10)
+
+plot(matched_m_branches, matched_f_branches, main = "Expected Branch Rates", xlab = "", ylab = "", xaxt = "n", yaxt = "n", 
+     cex.axis = 3, cex.main = 4.5, pch = 16, cex = 5, col = rgb(0,0,0,0.5), xlim = c(0,15), ylim = c(0,15))
+box(lwd=3)
+
+axis(1, at = 0:15, labels = rep("", 16), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 0:15, side = 1, at = 0:15, cex = 2, line = 2.25)
+axis(2, at = 0:15, labels =  rep("", 16), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 0:15, side = 2, at = 0:15, cex = 2, line = 2)
+abline(0, 1, lty = 2, lwd = 3, xpd = F)
+box(which = "figure", lty = 5)
+
+grDevices::cairo_pdf(filename = "/Users/nikolai/dissertation/figures/app_corrs_2methods.pdf", width = 1500 / 72, height = 700 / 72)
+
+par(mfrow = c(1,2), mar = c(6,7,4,1))
+plot(x = quantile(corrs[1,], probs = c(1:99)/100), xlab = "", ylab = "", xaxt = "n", yaxt = "n",
+     xlim = c(min(corrs), max(corrs)), ylim = c(min(corrs_sw), max(corrs_sw)), 
+     y = quantile(corrs_sw[1,], probs = c(1:99)/100), type = "l", col = rgb(0,0,0,0.5))
+title(xlab = "novel proposals: quantiles", cex.lab = 2, line = 4.5)
+title(ylab = "sliding window proposals: quantiles", cex.lab = 2, line = 5)
+box(lwd=4)
+box(which = "figure", lwd = 2, lty = 2)
+axis(1, at = seq(-0.9,0.9,by=0.2), labels = rep("", 10), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = seq(-0.9,0.9,by=0.2), side = 1, at = seq(-0.9,0.9,by=0.2), cex = 2, line = 2)
+axis(2, at = seq(-0.9,0.9,by=0.2), labels =  rep("", 10), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = seq(-0.9,0.9,by=0.2), side = 2, at = seq(-0.9,0.9,by=0.2), cex = 2, line = 1.5, las = 2)
 for(i in 2:nrow(corrs)){
-  lines(x = quantile(corrs[i,], probs = c(1:99)/100),
+  lines(x = quantile(corrs[i,], probs = c(1:99)/100), lwd = 2,
        y = quantile(corrs_sw[i,], probs = c(1:99)/100), col = rgb(0,0,0,0.5)); 
 }
 
-abline(a = 0, b = 1, lty = 2, col = 2, lwd = 1)
-legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,2), lty = c(1,2))
-title("quantile-quantile plot")
+abline(a = 0, b = 1, lty = 2, col = 2, lwd = 3)
+legend(x = "bottomright", legend = c("quantiles", "1-to-1 line"), col = c(1,2), lty = c(1,2), lwd = c(2,3), cex = 2, box.lty = 2, box.lwd = 4)
+title("Quantile-Quantile Plot of Marginal Correlations", cex.main = 2.25)
+fig_label("a)", shrinkX = 0.985, shrinkY = 0.975, cex = 3.25)
 
-plot(cov(t(corrs)), cov(t(corrs_sw)), pch = 16, col = rgb(0,0,0,0.75),
-     xlab = "novel proposal distribution variances and covariances", ylab = "sliding window proposal distribution variances and covariances")
-abline(a = 0, b = 1, lty = 2, col = 2, lwd = 2)
-title("variances and covariances plot")
-legend(x = "bottomright", legend = c("variances and covariances", "1-to-1 line"), col = c(rgb(0,0,0,0.75),2), lty=c(NA, 2), pch=c(16, NA))
+par(mar = c(6,9,4,1))
+plot(cov(t(corrs)), cov(t(corrs_sw)), pch = 16, col = rgb(0,0,0,0.5), cex = 2, xlab = "", ylab = "", xaxt = "n", yaxt = "n")
+title(xlab = "novel proposals: variances and covariances", cex.lab = 2, line = 4.5)
+title(ylab = "sliding window proposals: variances and covariances", cex.lab = 2, line = 6.75)
+box(lwd=4)
+box(which = "figure", lwd = 2, lty = 2)
+axis(1, at = -2:3 / 200, labels = rep("", 6), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = -2:3 / 200, side = 1, at = -2:3 / 200, cex = 2, line = 2)
+axis(2, at = -2:3 / 200, labels =  rep("", 6), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = -2:3 / 200, side = 2, at = -2:3 / 200, cex = 2, line = 1.5, las = 2)
+abline(a = 0, b = 1, lty = 2, col = 2, lwd = 3)
+title("Variances and Covariances", cex.main = 4)
+legend(x = "bottomright", legend = c("variances and covariances", "1-to-1 line"), col = c(rgb(0,0,0,0.5),2), lty=c(NA, 2), lwd = c(NA,3), cex = 2, pch=c(16, NA), box.lty = 2, box.lwd = 4)
+fig_label("b)", shrinkX = 0.985, shrinkY = 0.975, cex = 3.25)
 
+dev.off()

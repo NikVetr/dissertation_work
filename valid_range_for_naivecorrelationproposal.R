@@ -77,13 +77,17 @@ dims <- round(1.15^(1:45))[-(1:5)]
 # save(ranges, file = "ranges_of_expected_wiggleroom.txt")
 ranges <- sapply(dims, function(dim) replicate(n = 2000, valid_range(rlkj(K = dim), incr = 0.001)))
 load("ranges_of_expected_wiggleroom.txt")
-par(mar = c(5,5,0,2))
-png(filename = "/Users/nikolai/Documents/Harvati_Reanalysis_Manuscript/figures/expected_wiggle_room.png", width = 800, height = 600)
-plot(dims, log10(apply(ranges, 2, mean)), ylim = c(-2.1,0.5),
-     type = "l", xlab = "matrix dimensionality", 
-     ylab = "expected interval width", cex.lab = 1.25, lwd = 3, bty = "n", col = "darkred", xaxt = "n", yaxt = "n")
-axis(side = 2, labels = c(2*2^(-(0:3)), sapply(-(3:9), function(i) as.expression(bquote(2^ .(i))))), at = log10(2*2^(-(0:10))), las = 2)
-axis(side = 1, labels = -1:11*50, at = -1:11*50)
+
+grDevices::cairo_pdf(filename = "/Users/nikolai/dissertation/figures/expected_wiggle_room.pdf", width = 900 / 72, height = 800 / 72)
+par(mar = c(7,8.25,2,4))
+plot(dims, log10(apply(ranges, 2, mean)), ylim = c(-2.1,0.5), xlab = "", ylab = "",
+     type = "l", cex.lab = 2.25, lwd = 6, bty = "n", col = rgb(0,0,0,0.75), xaxt = "n", yaxt = "n")
+title(xlab = "matrix dimensionality", ylab = "expected interval width", cex.lab = 4, line = 5.35)
+box(lwd=4)
+axis(1, at = c(2,1:11*50), labels = rep("", 12), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text =c(2,1:11*50), side = 1, at = c(2,1:11*50), cex = 2, line = 2)
+axis(2, at = log10(2*2^(-(0:8))), labels =  rep("", 9), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = c(2*2^(-(0:3)), sapply(-(3:7), function(i) as.expression(bquote(2^ .(i))))), side = 2, at = log10(2*2^(-(0:8))), cex = 2, line = 1.5, las = 2)
 dev.off()
 
 #partial correlation matrix test

@@ -215,8 +215,42 @@ for(i in 1:n_rep){
   
 }
     
+#rewrite rb scripts to make br_lens visible
+
+for(i in 1:n_rep){
+  
+  cat(paste0(i, " "))
+  fileName <- paste0("simulations_99PCA_bothSexes_justSpecies_replicate_", i)
+  traitsPath_m <- paste0("data/bothSexes_justSpecies/", fileName, "_m_traits.nex")
+  traitsPath_f <- paste0("data/bothSexes_justSpecies/", fileName, "_f_traits.nex")
+  
+  if(i == 1){
+    file.remove("jobs_justSpecies_bothSexes_sims_visibleBLs.txt")
+  }
+  
+  # write the master scripts
+  for (l in 1:nrun) {
+    
+    tempScript <- readLines("harvati2004_infPrior_mvBM_metascript_visibleBLs.txt")
+    tempScript[1] <- paste0("setwd(\"", getwd(), "/\") ")
+    tempScript[2] <- paste0(tempScript[2], l, ")")
+    tempScript[3] <- paste0(tempScript[3], l)
+    tempScript[4] <- paste0("replicateNum <- ", i)
+    tempScript[8] <- gsub(x = tempScript[8], pattern = "placeholder_f.nex", replacement = traitsPath_f)
+    tempScript[9] <- gsub(x = tempScript[9], pattern = "placeholder_m.nex", replacement = traitsPath_m)
+    writeLines(tempScript, paste0("scripts/bothSexes_justSpecies/", fileName, "_script_visibleBLs_run_", l, ".Rev"))
+    
+    sink(file = "jobs_justSpecies_bothSexes_sims_visibleBLs.txt", append = T)
+    cat(paste0("cd ", getwd(), "; ",  "/Users/nikolai/repos/revbayes-development/projects/cmake/rb scripts/bothSexes_justSpecies/", fileName, "_script_visibleBLs_run_", l, ".Rev\n"))
+    sink()
+  }
+}
+
 #terminal command; can use system() but screen output is messy
 cat(paste0("cd ", getwd(), "; parallel --jobs 8 --sshloginfile /Volumes/macOS/Users/nikolai/instances_noDog --eta --results terminal_output_bSjS --files < jobs_justSpecies_bothSexes_sims.txt"))
+
+#for visible BLs runs
+cat(paste0("cd ", getwd(), "; parallel --jobs 8 --sshloginfile /Volumes/macOS/Users/nikolai/instances_noDog_noMonkey --eta --results terminal_output_bSj_visBLsS --files < jobs_justSpecies_bothSexes_sims_visibleBLs.txt"))
 
 
 #MCMC diagnostics

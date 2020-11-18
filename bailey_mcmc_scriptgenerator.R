@@ -65,3 +65,33 @@ for(rep_i in nreps){
   }
 }
 cat("parallel --jobs 8 --sshloginfile /Volumes/macOS/Users/nikolai/instances_noDog --eta --results bailey_sims_mcmc_shortset_screenout --files < jobs_bailey_mcmc_sims_shortset.txt")
+
+
+#### #### #### #### #### #### #### #### #### 
+#condition on true means OR true correlations
+#### #### #### #### #### #### #### #### #### 
+
+nreps <- 1501:2500
+n_mcmc_reps <- 4
+for(rep_i in nreps){
+  for(mcmc_rep_i in 1:n_mcmc_reps){
+    if(rep_i < 2001 & rep_i > 1500){
+      temp_script <- readLines("~/scripts/dissertation_work/bailey_mcmc_metascript_truemeans-estcorrs.R", warn = F)
+    } else if(rep_i < 2501 & rep_i > 2000){
+      temp_script <- readLines("~/scripts/dissertation_work/bailey_mcmc_metascript_estmeans-truecorrs.R", warn = F)
+    }
+    temp_script[3] <- paste0("rep_i <- ", ifelse(rep_i %% 500 == 0, 500, rep_i %% 500))
+    temp_script[4] <- paste0("mcmc_rep_i <- ", mcmc_rep_i)
+    writeLines(temp_script, paste0("scripts_sim/partlyTrue_script_replicate_", rep_i, "_mcmc_rep_", mcmc_rep_i, ".R"))
+  }
+}
+
+for(rep_i in nreps){
+  for(mcmc_rep_i in 1:n_mcmc_reps){
+    sink(file = paste0("jobs_bailey_mcmc_sims_partlyTrue.txt"), append = !(rep_i == 1 & mcmc_rep_i == 1))
+    cat(paste0("cd /Volumes/1TB/Bailey; /usr/local/bin/RScript scripts_sim/partlyTrue_script_replicate_", rep_i, "_mcmc_rep_", mcmc_rep_i, ".R\n"))
+    sink()
+  }
+}
+
+cat("parallel --jobs 8 --sshloginfile /Volumes/macOS/Users/nikolai/instances_noDog_noMonkey --eta --results bailey_sims_mcmc_partlyTrue_screenout --files < jobs_bailey_mcmc_sims_partlyTrue.txt")

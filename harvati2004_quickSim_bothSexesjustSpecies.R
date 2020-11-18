@@ -1,6 +1,9 @@
 library(ape)
 library(phytools)
 library(phangorn)
+library(coda)
+library(adephylo)
+library(apTreeshape)
 
 colfunc <- colorRampPalette(c("white", "black"))
 discretizeContData <- function(data, range = c(0,1), bins = 10){
@@ -188,15 +191,170 @@ internal_nodes_probs <- function(tree, trees_to_use){
   node_pps <- sapply(1:length(tips), function(node) clade_prob(tipNames = tips[[node]], allTipNames = tree$tip.label, partfreqs = bipart_probs))
   return(node_pps)
 }
+recomposeRateMatrix <- function(params, sds_keyword = "relative_sd", corrs_keyword = "correlation", ntraits = NA){
+  #get the standard deviations
+  sds <- params[grep(sds_keyword, colnames(params))]
+  if(!all(diff(as.numeric(sapply(1:length(sds), function(x) strsplit(colnames(sds)[[x]], split = "\\.")[[1]][2]))) == 1)){
+    stop("error something has gone terrible wrong")
+  }
+  sds <- diag(as.numeric(sds))
+  
+  if(is.na(ntraits)){
+    ntraits <- nrow(sds)
+  }
+  
+  #get the correlations
+  corrmat <- diag(ntraits)
+  upper_tri_corrs <- params[grep(corrs_keyword, colnames(params))]
+  if(!all(diff(as.numeric(sapply(1:length(upper_tri_corrs), function(x) strsplit(colnames(upper_tri_corrs)[[x]], split = "\\.")[[1]][2]))) == 1)){
+    stop("error something done goofed")
+  }
+  corrmat[lower.tri(corrmat)] <- as.numeric(upper_tri_corrs)
+  corrmat <- corrmat + t(corrmat) - diag(ntraits)
+  
+  #recompose and return
+  mvBM_R <- sds %*% corrmat %*% sds
+  return(mvBM_R)
+}
+matchNodes = function(phy){
+  
+  # get some useful info
+  num_tips = length(phy$tip.label)
+  num_nodes = phy$Nnode
+  tip_indexes = 1:num_tips
+  node_indexes = num_tips + num_nodes:1
+  
+  node_map = data.frame(R=1:(num_tips + num_nodes), Rev=NA, visits=0)
+  current_node = phy$Nnode + 2
+  k = 1
+  t = 1
+  
+  while(TRUE) {
+    print(current_node)
+    if ( current_node <= num_tips ) {
+      node_map$Rev[node_map$R == current_node] = t
+      current_node = phy$edge[phy$edge[,2] == current_node,1]
+      t = t + 1
+    } else {
+      
+      if ( node_map$visits[node_map$R == current_node] == 0 ) {
+        node_map$Rev[node_map$R == current_node] = node_indexes[k]
+        k = k + 1
+      }
+      node_map$visits[node_map$R == current_node] = node_map$visits[node_map$R == current_node] + 1
+      
+      if ( node_map$visits[node_map$R == current_node] == 1 ) {
+        # go right
+        current_node = phy$edge[phy$edge[,1] == current_node,2][2]
+      } else if ( node_map$visits[node_map$R == current_node] == 2 ) {
+        # go left
+        current_node = phy$edge[phy$edge[,1] == current_node,2][1]
+      } else if ( node_map$visits[node_map$R == current_node] == 3 ) {
+        # go down
+        if (current_node == num_tips + 1) {
+          break
+        } else {
+          current_node = phy$edge[phy$edge[,2] == current_node,1]
+        }
+      }
+    }
+    
+  }
+  
+  return(node_map[,1:2])
+  
+}
+getBranchLengths <- function(params, tree, keyword = "br_lens_m"){
+  br <- params[grep(keyword, colnames(params))]
+  if(!all(diff(as.numeric(sapply(1:length(br), function(x) strsplit(colnames(br)[[x]], split = "\\.")[[1]][2]))) == 1)){
+    stop("error something has gone terrible wrong")
+  }
+  br <- as.numeric(br)
+  
+  #get table of tree edges
+  tr_edge <- cbind(edge_ind = 1:length(tree$edge.length), tree$edge)
+  tr_edge <- rbind(tr_edge, c(NA, NA, length(tree$tip.label)+1))
+  tr_edge <- tr_edge[order(tr_edge[,3]),] #reorder by tip index
+  edge_indices_of_desc_tip <- tr_edge[,1] #in R
+  
+  #construct table of relations between indices
+  matcher <- cbind(matchNodes(tree), R_edge_ind = edge_indices_of_desc_tip)
+  matcher <- matcher[-which(is.na(matcher[,3])),]
+  #reorder to privelege rb
+  matcher <- matcher[order(matcher$Rev),]
+  #get br's in there
+  matcher <- cbind(matcher, rb_br = br)
+  #reorder by phylo's edge lengths
+  matcher <- matcher[order(matcher$R_edge_ind),]
+  reordered_brs <- matcher$rb_br
+  return(reordered_brs)
+}
+
 
 mol_tree <- read.tree("/Volumes/1TB/Harvati_Empirical/data2_neanF/mol_tree_mcc_spOnly.nex")
 tiplabs <- mol_tree$tip.label
 
+filename <- "bothSexes_justSpecies/harvati_PCA_bothSexes_justSpecies_replicate_"
+
+ess_threshold <- 500
+reps <- 1:100
+ctR2 <- rep(0, length(reps))
+essPasses <- rep(F, length(reps))
+#MCMC Diagnostics
+for(ii in 1:length(reps)){
+  i <- reps[ii]
+  cat(paste0(i, " "))
+  cat("...reading data")
+  trees1 <- read.tree(paste0("/Volumes/1TB/Harvati/output/", filename, i, "_c1.trees"))
+  # trees1m <- trees1
+  # trees1f <- trees1
+  
+  trees2 <- read.tree(paste0("/Volumes/1TB/Harvati/output/", filename, i, "_c2.trees"))
+  # trees2m <- trees2
+  # trees2f <- trees2
+  
+  log1 <- read.table(paste0("/Volumes/1TB/Harvati/output/", filename, i, "_c1.log"), header = T)
+  log2 <- read.table(paste0("/Volumes/1TB/Harvati/output/", filename, i, "_c2.log"), header = T)
+  
+  #for(j in 1:length(trees1m)){print(j);trees1m[[j]]$edge.length <- getBranchLengths(params = log1[j,], tree = trees1m[[j]], keyword = "br_lens_m")} #revbayes fails, yet again...
+  
+  cat("...computing ess")
+  log1ess <- effectiveSize(log1)
+  log2ess <- effectiveSize(log2)
+  logess <- effectiveSize(rbind(log1, log2))
+  logsess <- cbind(log1ess, log2ess, logess)
+  
+  log_params <- c("Post", "Prior", "Likeli", "corr", "rate_sim", "prop_var", "TL_")
+  essPass <- all(do.call(rbind, sapply(log_params, function(prm) logsess[grep(prm, rownames(logsess)),])) > 500)
+  
+  cat("...computing patristic dists")
+  pd1 <- t(sapply(trees1, function(tr) as.matrix(distTips(tr))[mol_tree$tip.label, mol_tree$tip.label][upper.tri(diag(length(mol_tree$tip.label)))]))
+  pd2 <- t(sapply(trees2, function(tr) as.matrix(distTips(tr))[mol_tree$tip.label, mol_tree$tip.label][upper.tri(diag(length(mol_tree$tip.label)))]))
+  
+  essPass <- all(essPass, c(effectiveSize(pd1), effectiveSize(pd2), effectiveSize(cbind(pd1,pd2))) > 500)
+  
+  cat("...computing p/a of bipartitions")
+  pp1 <- prop.part.df(trees1)
+  pp2 <- prop.part.df(trees2)
+  pp <- prop.part.df(c(trees1, trees2))
+  pp20 <- pp[which(pp$postProbs < 0.99)[1:20],]
+  PopBips1 <- (t(sapply(trees1, function(tr) compareTrees(pp20, prop.part.df(tr), tipLabs = mol_tree$tip.label)[1:20,2])))
+  PopBips2 <- (t(sapply(trees2, function(tr) compareTrees(pp20, prop.part.df(tr), tipLabs = mol_tree$tip.label)[1:20,2])))
+  
+  essPass <- all(essPass, c(effectiveSize(PopBips1), effectiveSize(PopBips2), effectiveSize(cbind(PopBips1, PopBips2))) > 500)
+  ctR2[ii] <- cor(compareTrees(pp1, pp2, tipLabs = mol_tree$tip.label))[1,2]^2
+  essPasses[ii] <- essPass
+  print(paste0(essPass, " ", cor(compareTrees(pp1, pp2, tipLabs = mol_tree$tip.label))[1,2]^2))
+  
+}
+
+
 #read in and process data for mvBM analysis
 dists <- rep(0, 100)
 compTrees <- lapply(1:100, function(na) NA)
+compTrees_cladeNames <- lapply(1:100, function(na) NA)
 postDists <- matrix(NA, nrow = 100, ncol = 10002)
-filename <- "bothSexes_justSpecies/harvati_PCA_bothSexes_justSpecies_replicate_"
+filename <- "bothSexes_justSpecies/harvati_PCA_bothSexes_justSpecies_visBLs_replicate_"
 for(i in 1:100){
   cat(paste0(i, " "))
   trees1 <- read.tree(paste0("/Volumes/1TB/Harvati/output/", filename, i, "_c1.trees"))
@@ -206,20 +364,21 @@ for(i in 1:100){
   morph_tree <- maxCladeCred(trees)
   dists[i] <- RF.dist(mol_tree, morph_tree, normalize = T)
   compTrees[[i]] <- compareTrees(prop.part.df(trees), prop.part.df(mol_tree), tiplabs)
+  compTrees_cladeNames[[i]] <- compareTrees(prop.part.df(trees), prop.part.df(mol_tree), tiplabs, returnCladeNames = T)
   postDists[i,] <- sapply(1:length(trees), function(tree) round(RF.dist(trees[tree], mol_tree, normalize = T), 2))
 }
 
-compTrees_cladeNames <- lapply(1:100, function(na) NA)
-for(i in 1:100){
-  cat(paste0(i, " "))
-  trees1 <- read.tree(paste0("/Volumes/1TB/Harvati/output/", filename, i, "_c1.trees"))
-  trees2 <- read.tree(paste0("/Volumes/1TB/Harvati/output/", filename, i, "_c2.trees"))
-  # print(RF.dist(maxCladeCred(trees1), maxCladeCred(trees2)))
-  trees <- c(trees1, trees2)
-  compTrees_cladeNames[[i]] <- compareTrees(prop.part.df(trees), prop.part.df(mol_tree), tiplabs, returnCladeNames = T)
-}
+# compTrees_cladeNames <- lapply(1:100, function(na) NA)
+# for(i in 1:100){
+#   cat(paste0(i, " "))
+#   trees1 <- read.tree(paste0("/Volumes/1TB/Harvati/output/", filename, i, "_c1.trees"))
+#   trees2 <- read.tree(paste0("/Volumes/1TB/Harvati/output/", filename, i, "_c2.trees"))
+#   # print(RF.dist(maxCladeCred(trees1), maxCladeCred(trees2)))
+#   trees <- c(trees1, trees2)
+#   compTrees_cladeNames[[i]] <- compareTrees(prop.part.df(trees), prop.part.df(mol_tree), tiplabs, returnCladeNames = T)
+# }
 
-sum(dists >= 0.5) / 100
+percent_greaterthan_orequal <- sum(dists >= 0.5) / length(dists) * 100
 dists_table <- table(dists)
 
 
@@ -228,7 +387,7 @@ mvBM_trees1 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/justSpecies/harv
 mvBM_trees2 <- read.tree("/Volumes/1TB/Harvati_Empirical/output/justSpecies/harvati_PCA_bothSexes_noHomopops_justSpecies_inf_mvBM_PCA99_c2.trees")
 mvBM_trees <- c(mvBM_trees1, mvBM_trees2)
 comparison_mvBM <- compareTrees(prop.part.df(mvBM_trees, cutoff = 0.0001), prop.part.df(mol_tree), tiplabs, T)
-mvBM_RFdists <- sapply(1:length(mvBM_trees), function(tree) round(RF.dist(mvBM_trees[tree], mol_tree_mcc_spOnly, normalize = T), 2))
+mvBM_RFdists <- sapply(1:length(mvBM_trees), function(tree) round(RF.dist(mvBM_trees[tree], mol_tree, normalize = T), 2))
 mvBM_table <- table(mvBM_RFdists) / length(mvBM_trees) * 100
 compTrees_comb <- do.call(rbind, compTrees)
 postDists_tables <- lapply(1:100, function(pd) table(postDists[pd,])  / sum(table(postDists[pd,])) * 100)
@@ -246,8 +405,8 @@ postDists_tables <- lapply(1:100, function(pd) table(postDists[pd,])  / sum(tabl
 
 
 
-
-grDevices::cairo_pdf(filename = "dissertation/figures/harvati_figure3_final.pdf", width = 2400 / 72, height = 800 / 72)
+textsiz <- 4
+grDevices::cairo_pdf(filename = "~/dissertation/figures/harvati_figure3_final_redo.pdf", width = 2400 / 72, height = 800 / 72)
 # png(filename = "~/Documents/Harvati_Reanalysis_Manuscript/figures/figure3_final.png", width = 2400, height = 800)
 par(mfrow = c(1, 3))
 
@@ -265,7 +424,7 @@ axis(2, at = 0:3*10, labels =  rep("", 4), lwd = 4, cex.axis = 4, tck = -0.015)
 mtext(text = 0:3*10, side = 2, at = 0:3*10, cex = 3, line = 2)
 box(lwd=4)
 legend(x = "topright", legend = c(paste0("µ = ", round(mean(dists), 3), 
-                                       ", σ = ", round(sd(dists), 3)), "       (% ≥ 0.5) = 23%"), cex = 3, bty = "n", text.col=c(1, "darkred"))
+                                       ", σ = ", round(sd(dists), 3)), paste0("       (% ≥ 0.5) = ", percent_greaterthan_orequal, "%")), cex = 3, bty = "n", text.col=c(1, "darkred"))
 text(labels = "a)", cex = textsiz, x = 1.0365, y = 39.5, xpd = T, font = 4, col = "darkred")
 box(which = "figure", lty = 5)
 
@@ -343,7 +502,7 @@ box(which = "figure", lty = 5)
 
 
 
-plot(postDists_tables[[1]], xlim = c(0,1), xlab = "", ylab = "", ylim = c(0,60), col = rgb(0,0,0,0.05),
+plot(postDists_tables[[1]], xlim = c(0,1), xlab = "", ylab = "", ylim = c(0,100), col = rgb(0,0,0,0.05),
      cex.lab = 4, cex.axis = 3, lwd = 4.5, xaxt = "n", yaxt = "n", main = "RF-Distances from True Tree", cex.main = 4.5)
 for(i in 2:100){
   lines(postDists_tables[[i]], col = rgb(0,0,0,0.05), lwd = 4.5)
@@ -352,14 +511,14 @@ title(xlab = "normalized RF-Distance", cex.lab = 5, line = 7.5)
 title(ylab = "percent", cex.lab = 5, line = 7)
 axis(1, at = 0:10/10, labels = rep("", 11), lwd = 4, cex.axis = 3, tck = -0.015)
 mtext(text = 0:10/10, side = 1, at = 0:10/10, cex = 3, line = 3)
-axis(2, at = 0:6*10, labels =  rep("", 7), lwd = 4, cex.axis = 3, tck = -0.015)
-mtext(text = 0:6*10, side = 2, at = 0:6*10, cex = 3, line = 1.875)
+axis(2, at = 0:5*20, labels =  rep("", 6), lwd = 4, cex.axis = 3, tck = -0.015)
+mtext(text = 0:5*20, side = 2, at = 0:5*20, cex = 3, line = 1.875)
 
-lines(table(mvBM_RFdists + 0.01) / length(mvBM_trees) * 100, lwd = 4.5, col = rgb(0.75,0,0,0.75))
+lines(table(mvBM_RFdists + 0.01) / length(mvBM_trees) * 100, lwd = 4.5, col = rgb(0.75,0,0,0.5))
 legend(x = "topright", legend = "empirical result", lwd = 4.5, col = rgb(0.75,0,0,0.75),  cex = 3, box.lty = 3, box.lwd = 2)
 box(lwd=3.25)
 box(which = "figure", lty = 5)
-text(labels = "c)", cex = textsiz, x = 1.0365, y = 67.75, xpd = T, font = 4, col = "darkred")
+text(labels = "c)", cex = textsiz, x = 1.0365, y = 113.25, xpd = T, font = 4, col = "darkred")
 
 dev.off()
 
@@ -371,11 +530,12 @@ fixDZ <- function(thing){
   if(length(thing) == 0){return(c(0,0))}else{return(thing)}
 }
 mvBM_mismatched_clades <- mvBM_mismatched_clades[c(1,2,3,5,6,4),]
-mvBM_mismatched_clades_simProbs <- lapply(1:nrow(mvBM_mismatched_clades), function(clade) 
+mvBM_mismatched_clades_simProbs <- lapply(1:nrow(mvBM_mismatched_clades), function(clade)
   t(sapply(1:100, function(sim) fixDZ(as.numeric(compTrees_cladeNames[[sim]][compTrees_cladeNames[[sim]][,3] == mvBM_mismatched_clades[clade,3], 1:2]))))
 )
 
-grDevices::cairo_pdf(filename = "dissertation/figures/harvati_figure6_final.pdf", width = 2400 / 72, height = 800 / 72)
+
+grDevices::cairo_pdf(filename = "~/dissertation/figures/harvati_figure6_final_redo.pdf", width = 2400 / 72, height = 800 / 72)
 # png(filename = "~/Documents/Harvati_Reanalysis_Manuscript/figures/figure6_final.png", width = 2400, height = 800)
 par(mfrow = c(2, 3))
 par(mar=c(9,9.5,5,1))
@@ -386,10 +546,12 @@ for(i in 1:length(mvBM_mismatched_clades_simProbs)){
   axis(1, at = 0:5/5, labels = rep("", 6), lwd = 4, cex.axis = 3, tck = -0.035)
   mtext(text = 0:5/5, side = 1, at = 0:5/5, cex = 2.5, line = 3.25)
   axis(2, at = 0:5*20, labels =  rep("", 6), lwd = 4, cex.axis = 3, tck = -0.035)
-  mtext(text = 0:4*20, side = 2, at = 0:4*20, cex = 2.5, line = 2, srt = 90)  
+  mtext(text = 0:4*20, side = 2, at = 0:4*20, cex = 2.5, line = 2, srt = 90)
   abline(v = mvBM_mismatched_clades[i,1], col = "darkred", lty = 2, lwd = 4)
-  text(x = as.numeric(mvBM_mismatched_clades[i,1]) - 0.02, y = ifelse(i==5, 75, 25), labels = sum(as.numeric(mvBM_mismatched_clades[i,1]) > mvBM_mismatched_clades_simProbs[[i]][,1]), srt = 90, cex = 3, col = "darkred")
-  text(x = as.numeric(mvBM_mismatched_clades[i,1]) + 0.02, y = ifelse(i==5, 75, 25), labels = sum(as.numeric(mvBM_mismatched_clades[i,1]) < mvBM_mismatched_clades_simProbs[[i]][,1]), srt = 270, cex = 3, col = "darkred")
+  text(x = as.numeric(mvBM_mismatched_clades[i,1]) - 0.02, 
+       y = ifelse(any(i==c(5,6)), 75, 25), labels = sum(as.numeric(mvBM_mismatched_clades[i,1]) > mvBM_mismatched_clades_simProbs[[i]][,1]), srt = 90, cex = 3, col = "darkred")
+  text(x = as.numeric(mvBM_mismatched_clades[i,1]) + 0.02, 
+       y = ifelse(any(i==c(5,6)), 75, 25), labels = sum(as.numeric(mvBM_mismatched_clades[i,1]) < mvBM_mismatched_clades_simProbs[[i]][,1]), srt = 270, cex = 3, col = "darkred")
   # text(labels = "a)", cex = textsiz, x = 1.015, y = 525, xpd = T, font = 4, col = "darkred")
   title(xlab = "probability", cex.lab = 4, line = 6.75)
   title(ylab = "frequency", cex.lab = 4, line = 6)

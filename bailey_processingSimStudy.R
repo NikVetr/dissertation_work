@@ -1,3 +1,5 @@
+library(coda)
+library(rethinking)
 setwd("/Volumes/1TB/Bailey")
 nreps <- 1:500
 
@@ -762,7 +764,7 @@ cpts <- function(t1, t2, t3, t4, tipLabs){
   return(unlist(sapply(1:(length(altr)-1), function(rowi) sapply((rowi+1):length(altr), function(colj) cor(compareTrees(pps_altr[[rowi]], pps_altr[[colj]], tipLabs)[,1:2])[1,2]))))
 }
 
-reps <- c(1:100, 501:600, 1001:1100)
+reps <- 1:1500
 post_prob_comp <- lapply(1:length(reps), function(X) NA)
 compTreesChains <- lapply(1:length(reps), function(X) NA)
 for(i_ind in 1:length(reps)){
@@ -812,7 +814,7 @@ for(i_ind in 1:length(reps)){
   }
 }
 
-reps <- c(1:100, 501:600, 1001:1100)
+reps <- 1:1500
 ratePercentile <- lapply(1:length(reps), function(X) NA)
 compRatesChains <- lapply(1:length(reps), function(X) NA)
 rateCorrs <- rep(NA, length(reps))
@@ -858,20 +860,42 @@ for(i_ind in 1:length(reps)){
 
 }
 
-fails <- which(sapply(1:length(compRatesChains), function(chain) !all(compRatesChains[[chain]] > 1000) | any(is.na(compRatesChains[[chain]]))))
-rate_percs_1 <- ratePercentile[1:100]
-rate_percs_1 <- unlist(rate_percs_1[-(fails[fails > 0 & fails < 101])])
-rate_percs_2 <- ratePercentile[101:200]
-rate_percs_2 <- unlist(rate_percs_2[-(fails[fails > 100 & fails < 201] - 100)])
-rate_percs_3 <- ratePercentile[201:300]
-rate_percs_3 <- unlist(rate_percs_3[-(fails[fails > 200 & fails < 301] - 200)])
+source("~/scripts/bailey_processingSimStudy_estMuTrueCorr.R")
+source("~/scripts/bailey_processingSimStudy_truMuEstCorr.R")
 
-rate_corrs_1 <- rateCorrs[1:100]
-rate_corrs_1 <- (rate_corrs_1[-fails[fails > 0 & fails < 101]])
-rate_corrs_2 <- rateCorrs[101:200]
-rate_corrs_2 <- (rate_corrs_2[-(fails[fails > 100 & fails < 201] - 100)])
-rate_corrs_3 <- rateCorrs[201:300]
-rate_corrs_3 <- (rate_corrs_3[-(fails[fails > 200 & fails < 301] - 200)])
+sum(sapply(1:500, function(x) all(compTreesChains_truMu[[x]] > 0.99)))
+
+ratePercentile_truMu
+compRatesChains_truMu
+rateCorrs_truMu
+post_prob_comp_truMu
+compTreesChains_truMu
+fails_truMu <- which(!sapply(1:length(compTreesChains_truMu), function(comper) all(compTreesChains_truMu[[comper]]^2 > 0.99)))
+fails_truMu <- unique(c(fails_truMu, which(sapply(1:length(compRatesChains_truMu), function(chain) !all(compRatesChains_truMu[[chain]] > 1000) | any(is.na(compRatesChains_truMu[[chain]]))))))
+
+ratePercentile_truCorr
+compRatesChains_truCorr
+rateCorrs_truCorr
+post_prob_comp_truCorr
+compTreesChains_truCorr
+fails_truCorr <- which(!sapply(1:length(compTreesChains_truCorr), function(comper) all(compTreesChains_truCorr[[comper]]^2 > 0.99)))
+fails_truCorr <- unique(c(fails_truCorr, which(sapply(1:length(compRatesChains_truCorr), function(chain) !all(compRatesChains_truCorr[[chain]] > 1000) | any(is.na(compRatesChains_truCorr[[chain]]))))))
+
+
+fails <- which(sapply(1:length(compRatesChains), function(chain) !all(compRatesChains[[chain]] > 1000) | any(is.na(compRatesChains[[chain]]))))
+rate_percs_1 <- ratePercentile[1:500]
+rate_percs_1 <- unlist(rate_percs_1[-(fails[fails > 0 & fails < 501])])
+rate_percs_2 <- ratePercentile[501:1000]
+rate_percs_2 <- unlist(rate_percs_2[-(fails[fails > 500 & fails < 1001] - 500)])
+rate_percs_3 <- ratePercentile[1001:1500]
+rate_percs_3 <- unlist(rate_percs_3[-(fails[fails > 1000 & fails < 1501] - 1500)])
+
+rate_corrs_1 <- rateCorrs[1:500]
+rate_corrs_1 <- (rate_corrs_1[-fails[fails > 0 & fails < 501]])
+rate_corrs_2 <- rateCorrs[501:1000]
+rate_corrs_2 <- (rate_corrs_2[-(fails[fails > 500 & fails < 1001] - 500)])
+rate_corrs_3 <- rateCorrs[1001:1500]
+rate_corrs_3 <- (rate_corrs_3[-(fails[fails > 1000 & fails < 1501] - 1500)])
 
 hist(rate_percs_1)
 hist(rate_percs_2)
@@ -882,26 +906,31 @@ hist(rate_corrs_2)
 hist(rate_corrs_3)
 
 
-# fails <- which(!sapply(1:length(compTreesChains), function(comper) all(compTreesChains[[comper]]^2 > 0.95)))
-# post_probs_1 <- post_prob_comp[1:100]
-# post_probs_1 <- post_probs_1[-(fails[fails < 101])]
-# post_probs_2 <- post_prob_comp[101:200]
-# post_probs_2 <- post_probs_2[-(fails[fails > 100 & fails < 201] - 100)]
-# post_probs_3 <- post_prob_comp[201:300]
-# post_probs_3 <- post_probs_3[-(fails[fails > 200 & fails < 301] - 200)]
+fails <- which(!sapply(1:length(compTreesChains), function(comper) all(compTreesChains[[comper]]^2 > 0.99)))
+post_probs_1 <- post_prob_comp[1:500]
+post_probs_1 <- post_probs_1[-(fails[fails < 501])]
+post_probs_2 <- post_prob_comp[501:1000]
+post_probs_2 <- post_probs_2[-(fails[fails > 500 & fails < 1001] - 500)]
+post_probs_3 <- post_prob_comp[1001:1500]
+post_probs_3 <- post_probs_3[-(fails[fails > 1000 & fails < 1501] - 500)]
 
-post_probs_1 <- post_prob_comp[1:100]
-post_probs_2 <- post_prob_comp[101:200]
+post_probs_1 <- post_prob_comp[1:500]
+post_probs_1 <- post_probs_1[!is.na(post_probs_1)]
+post_probs_2 <- post_prob_comp[501:1000]
 post_probs_2 <- post_probs_2[!is.na(post_probs_2)]
-post_probs_3 <- post_prob_comp[201:300]
+post_probs_3 <- post_prob_comp[1001:1500]
 
 post_probs_all <- list(post_probs_1, post_probs_2, post_probs_3)
 rate_corrs_all <- rev(list(rate_corrs_1, rate_corrs_2, rate_corrs_3))
 rate_percs_all <- rev(list(rate_percs_1, rate_percs_2, rate_percs_3))
 
+if(F){
+  post_probs_all <- list(post_probs_1, post_probs_2, post_probs_3, post_prob_comp_truMu[-fails_truMu], post_prob_comp_truCorr[-fails_truCorr])
+  rate_corrs_all <- rev(list(rate_corrs_1, rate_corrs_2, rate_corrs_3, rateCorrs_truMu[-fails_truMu], rateCorrs_truCorr[-fails_truCorr]))
+  rate_percs_all <- rev(list(rate_percs_1, rate_percs_2, rate_percs_3, ratePercentile_truMu[-fails_truMu], ratePercentile_truCorr[-fails_truCorr]))
+}
 
-
-grDevices::cairo_pdf(filename = "/Volumes/macOS/Users/nikolai/dissertation/figures/chpt4_figure8.pdf", width = 2250 / 72, height = 750 / 72)
+grDevices::cairo_pdf(filename = "/Volumes/macOS/Users/nikolai/dissertation/figures/chpt4_figure8_2.pdf", width = 2250 / 72, height = 750 / 72)
 layout(mat = matrix(c(1,2,5,1,3,5,1,4,5), nrow = 3, ncol = 3, byrow = T))
 par(mar = c(8.5,8.5,6,2))
 # par(mar = c(6,6,6,2), mfrow = c(1,2))
@@ -909,7 +938,7 @@ par(mar = c(8.5,8.5,6,2))
 for(i in 1:length(post_probs_all)){
   pp_cat <- do.call(rbind, post_probs_all[[i]])
   pp_cat <- pp_cat[order(pp_cat[,1], decreasing = F),]
-  interval_width = 0.1
+  interval_width = 0.1 + 2/30
   intervals <- seq(0, 1, by = interval_width)
   iv_means <- sapply(1:(length(intervals) - 1), function(iv) mean(pp_cat[pp_cat[,1] > intervals[iv] & pp_cat[,1] < intervals[iv+1],1]))
   iv_freqs_true <- sapply(1:(length(intervals) - 1), function(iv) mean(pp_cat[pp_cat[,1] > intervals[iv] & pp_cat[,1] < intervals[iv+1],2]))
@@ -925,7 +954,7 @@ for(i in 1:length(post_probs_all)){
     title(xlab = "Estimated Bipartition Probability", cex.lab = 4, line = 6.5)
     title(ylab = "True Bipartition Frequency", cex.lab = 4, line = 5)
     legend(x = "topleft", col = c(2,1), lwd = 3, lty = c(2,1), legend = c("1-to-1 line", "calibration curve"), box.lty = 2, box.lwd = 4, cex = 2.75)
-    fig_label(text = "a)", cex = 5, shrinkX = 0.8, shrinkY = 0.98)
+    fig_label(text = "a)", cex = 5, shrinkX = 0.9, shrinkY = 0.98)
   } else {
     lines(iv_means, iv_freqs_true, lwd = 3)
   }
@@ -943,7 +972,7 @@ for(i in 1:length(rate_percs_all)){
   par(lwd = 3)
   hist(rate_percs_all[[i]], main = "", xaxt = "n", yaxt = "n", xlab = "", ylab = "", breaks = 10, freq = F)
   box(which = "figure", lwd = 2, lty = 2)
-  fig_label(text = paste0(letters[i+1], ")"), cex = 5, shrinkX = 0.8, shrinkY = 0.9)
+  fig_label(text = paste0(letters[i+1], ")"), cex = 5, shrinkX = 0.9, shrinkY = 0.9)
   axis(side = 1, tck = -0.1, lwd = 3, lwd.ticks = 3, cex.axis = 3, labels = rep("", 11), at = 0:10/10)
   mtext(text = 0:10/10, side = 1, line = 3, at = 0:10/10, cex = 2)
   title(xlab = "True Rate Percentile in Marginal Posterior Distribution", cex.lab = 2.5, line = 6.5)
@@ -977,7 +1006,7 @@ for(i in 1:3){
     box("plot", lwd = 3, lty = 1)
     title(xlab = latex2exp::TeX(paste0("R$^2$ Across Replicates")), cex.lab = 4, line = 7.5)
     shade(densobj, col = rgb(0,0,0,0.2), lim = c(0, 2))
-    fig_label(text = paste0("e", ")"), cex = 5, shrinkX = 0.85, shrinkY = 0.975)
+    fig_label(text = paste0("e", ")"), cex = 5, shrinkX = 0.925, shrinkY = 0.975)
     title(main = latex2exp::TeX(paste0("R$^2$ between True Rates & Posterior Mean Rates")), cex.main = 3.75)
   } 
   if(i == 2){
