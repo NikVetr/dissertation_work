@@ -1,6 +1,6 @@
 setwd("/Volumes/1TB/Bailey/")
 
-library(mvtnorm)
+library(mvtnorm) 
 library(pbivnorm)
 
 rlkj <- function (K, eta = 1) {
